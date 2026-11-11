@@ -1,0 +1,25 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "gitea": {
+      "type": "local",
+      "command": ["gitea-mcp", "-t", "stdio"],
+      "environment": {
+        "GITEA_HOST": "{env:GITEA_HOST}",
+        "GITEA_ACCESS_TOKEN": "{env:GITEA_TOKEN}",
+        "GITEA_SCOPES": "repository,file,branch,issue,pull_request,project,wiki,search"
+      }
+    },
+    "github": {
+      "type": "local",
+      "command": ["github-mcp-server", "stdio", "--read-only", "--toolsets", "repos,issues,pull_requests"],
+      "environment": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "{env:GITHUB_PERSONAL_ACCESS_TOKEN}"
+      }
+    },
+    "serena": {
+      "type": "local",
+      "command": ["serena", "start-mcp-server", "--context", "agent", "--project-from-cwd"]
+    }
+  }
+}
