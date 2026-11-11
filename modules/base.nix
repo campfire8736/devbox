@@ -1,4 +1,7 @@
-{ pkgs, ... }:
+{ config, pkgs, ... }:
+let
+  cfg = config.devbox;
+in
 {
   nix.settings = {
     experimental-features = [
@@ -12,14 +15,15 @@
     auto-optimise-store = true;
   };
 
-  # A dev box fills /nix fast; 80G disk, keep 30 days of generations.
+  # A dev box fills /nix fast; keep 30 days of generations.
   nix.gc = {
     automatic = true;
     dates = "weekly";
     options = "--delete-older-than 30d";
   };
 
-  time.timeZone = "Europe/Paris";
+  networking.hostName = cfg.hostname;
+  time.timeZone = cfg.timeZone;
   i18n.defaultLocale = "en_US.UTF-8";
 
   services.openssh = {
@@ -31,8 +35,10 @@
     };
   };
 
-  # 4096 = opencode server (API + web UI), reached through the umbrelOS forward.
-  networking.firewall.allowedTCPPorts = [ 22 4096 ];
+  networking.firewall.allowedTCPPorts = [
+    22
+    cfg.webPort
+  ];
 
   services.qemuGuest.enable = true;
 

@@ -1,19 +1,25 @@
-{ ... }:
+{ config, lib, ... }:
+let
+  cfg = config.devbox;
+  haveSopsPassword = cfg.secrets == "sops" && builtins.pathExists ../secrets/secrets.yaml;
+in
 {
-  users.users.dev = {
+  users.users.${cfg.user} = {
     isNormalUser = true;
-    description = "devbox operator + opencode service account";
+    description = "operator + opencode service account";
     extraGroups = [ "wheel" ];
-    # The login password hash lives in secrets/secrets.yaml (sops-nix), so it is
-    # never in this repo. Until the secrets file exists the account is key-only.
-    openssh.authorizedKeys.keys = [
-      # PUBLIC keys only — replace with yours and commit.
-      # "ssh-ed25519 AAAA... you@laptop"
-    ];
+    openssh.authorizedKeys.keys = cfg.sshKeys;
   };
 
-  # Passwordless sudo is deliberate: opencode's shell tool runs as `dev` and is
-  # expected to install tooling and rebuild the system. The containment boundary
-  # is the VM, not the Unix account. Set to true to gate sudo behind a password.
+  # Declaring a login password is a deployment choice, so it is only declared in
+  # sops mode. `users.mutableUsers` stays at its default (true), which means a
+  # password set with `passwd` survives rebuilds in the other modes.
+  users.users.${cfg.user} = lib.mkIf haveSopsPassword {
+    hashedPasswordFile = config.sops.secrets.dev_password_hash.path;
+  };
+
+  # Passwordless sudo is deliberate: opencode's shell tool runs as the operator
+  # and is expected to install tooling and rebuild. The containment boundary is
+  # the VM, not the Unix account.
   security.sudo.wheelNeedsPassword = false;
 }

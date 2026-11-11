@@ -1,14 +1,15 @@
 { config, lib, pkgs, ... }:
 let
-  haveSecrets = builtins.pathExists ../secrets/secrets.yaml;
+  cfg = config.devbox;
 
-  # With sops enabled the env file is rendered by sops-nix at activation; without
-  # it, the fallback path is a file you create by hand (escape hatch).
-  envFile =
-    if haveSecrets then
-      config.sops.templates."devbox.env".path
-    else
-      "/var/lib/devbox/secrets.env";
+  haveSopsEnv = cfg.secrets == "sops" && builtins.pathExists ../secrets/secrets.yaml;
+  # sops selected without a committed secrets file behaves like "none" rather
+  # than pointing LoadCredential at a path that does not exist.
+  credentials = cfg.secrets == "file" || haveSopsEnv;
+
+  # sops renders into /run/secrets-rendered at activation; "file" mode reads the
+  # operator-provided path directly.
+  envFile = if haveSopsEnv then config.sops.templates."devbox.env".path else cfg.secretsFile;
 
   cfgFile = pkgs.writeText "opencode.json" (builtins.readFile ./opencode.json);
 
@@ -19,15 +20,15 @@ let
       set +a
     fi
     export OPENCODE_DISABLE_AUTOUPDATE=1
-    exec ${pkgs.devbox.opencode}/bin/opencode serve --hostname 0.0.0.0 --port 4096
+    exec ${pkgs.devbox.opencode}/bin/opencode serve --hostname 0.0.0.0 --port ${toString cfg.webPort}
   '';
 in
 {
   systemd.tmpfiles.rules = [
-    "d /srv/work 0755 dev users -"
-    "d /home/dev/.config 0755 dev users -"
-    "d /home/dev/.config/opencode 0755 dev users -"
-    "L+ /home/dev/.config/opencode/opencode.json - - - - ${cfgFile}"
+    "d ${cfg.workspaceDir} 0755 ${cfg.user} users -"
+    "d /home/${cfg.user}/.config 0755 ${cfg.user} users -"
+    "d /home/${cfg.user}/.config/opencode 0755 ${cfg.user} users -"
+    "L+ /home/${cfg.user}/.config/opencode/opencode.json - - - - ${cfgFile}"
   ];
 
   systemd.services.opencode = {
@@ -57,17 +58,17 @@ in
     ];
 
     environment = {
-      HOME = "/home/dev";
-      XDG_CONFIG_HOME = "/home/dev/.config";
-      XDG_DATA_HOME = "/home/dev/.local/share";
-      XDG_CACHE_HOME = "/home/dev/.cache";
+      HOME = "/home/${cfg.user}";
+      XDG_CONFIG_HOME = "/home/${cfg.user}/.config";
+      XDG_DATA_HOME = "/home/${cfg.user}/.local/share";
+      XDG_CACHE_HOME = "/home/${cfg.user}/.cache";
     };
 
     serviceConfig = {
-      User = "dev";
+      User = cfg.user;
       Group = "users";
-      WorkingDirectory = "/srv/work";
-      LoadCredential = [ "env:${envFile}" ];
+      WorkingDirectory = cfg.workspaceDir;
+      LoadCredential = lib.optionals credentials [ "env:${envFile}" ];
       ExecStart = start;
       Restart = "always";
       RestartSec = 5;

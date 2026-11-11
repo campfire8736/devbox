@@ -32,21 +32,36 @@ repo kept current. Serena drives real language servers: exact about symbols,
 never stale. If call-graph or impact queries turn out to be the gap, add local
 Graphify as a fourth server rather than replacing Serena.
 
-## Secrets: sops-nix with an age identity, ciphertext in git
+## Secrets: three modes, and why the repo does not depend on one
 
-The repository is public, so nothing sensitive may be committed in the clear.
-sops-nix gives encrypted-at-rest secrets that still live in git, so the box
-stays reproducible from the repo alone. The identity file is the one thing
-outside version control; losing it means re-encrypting.
+The repo is public and meant to be forked. Those two facts rule out baking any
+particular secret store into the flake, because every nix-native option has the
+same property: encryption is bound to specific recipients.
 
-`neededForUsers = true` on the login hash is what makes the password exist
-before the account is created — otherwise the account is key-only after boot.
-The rendered env file is handed to the unit as a systemd credential rather than
-being readable by the `dev` user.
+| approach | keeps secrets in git | cost to a fork |
+| --- | --- | --- |
+| sops-nix (age/GPG) | yes, ciphertext | new age identity + re-encrypt |
+| agenix | yes, ciphertext | new SSH host key + `agenix -r` rekey |
+| plain env file on the box | no | nothing |
+| credential store at runtime (Vault, 1Password, Bitwarden CLI) | no | a dependency and a bootstrap token |
 
-Rejected: plaintext `EnvironmentFile` on the box (not reproducible, drifts from
-the repo), and committing a password hash unencrypted (a public repo invites
-offline cracking of a dev password).
+So the flake exposes `devbox.secrets = "none" | "file" | "sops"` with `none` as
+the default. A fork boots and works with no secret setup at all; opencode asks
+you to log in to a provider in the UI. `file` is the boring middle ground: one
+root-only env file, handed to the service as a systemd credential, never in git.
+`sops` is the opt-in used here, because it is the only option that lets the box
+be rebuilt from the repo alone.
+
+Two details that make sops mode correct rather than convenient:
+
+- `neededForUsers = true` on the login hash, so it exists before the account is
+  created — otherwise the account comes up key-only after boot.
+- the rendered env file is passed via `LoadCredential`, so the operator account
+  (and any agent running as it) cannot read it.
+
+Rejected: declaring a password hash in the plain flake (a public repo invites
+offline cracking of a dev password), and requiring sops for every fork (it is
+the single largest source of "works on my machine" in NixOS configs).
 
 ## Sandbox: what it is for
 
