@@ -35,7 +35,28 @@
     sshKeys = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [ ];
-      description = "PUBLIC keys allowed to log in. Login is key-only unless a password is declared.";
+      description = "PUBLIC keys allowed to log in. These DO end up in git.";
+    };
+
+    sshKeyFiles = lib.mkOption {
+      type = lib.types.listOf lib.types.path;
+      default = [ ];
+      description = ''
+        Files each holding one public key, read at build time into
+        /etc/ssh/authorized_keys.d/<user>. Keeps keys out of git at the cost of
+        a rebuild when they change. The path must exist when the flake is
+        evaluated, which is also what stops a typo from silently locking you out.
+      '';
+    };
+
+    manualSshKeys = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Assert that you manage ~/.ssh/authorized_keys yourself. NixOS only
+        writes authorized_keys when sshKeys/sshKeyFiles are non-empty, so the
+        user's own file is left alone — set this to silence the lockout check.
+      '';
     };
 
     secrets = lib.mkOption {

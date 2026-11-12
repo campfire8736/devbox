@@ -21,7 +21,7 @@ devbox = {
   user     = "dev";
   timeZone = "Europe/Paris";
   webPort  = 4096;
-  sshKeys  = [ "ssh-ed25519 AAAA... you@laptop" ];
+  sshKeyFiles = [ /etc/devbox/authorized_keys ];   # or sshKeys = [ "ssh-ed25519 ..." ]
   secrets  = "none";        # none | file | sops
 };
 ```

@@ -2,6 +2,7 @@
 let
   cfg = config.devbox;
   haveSopsPassword = cfg.secrets == "sops" && builtins.pathExists ../secrets/secrets.yaml;
+  haveKeys = cfg.sshKeys != [ ] || cfg.sshKeyFiles != [ ];
 in
 {
   # Exactly one assignment: `users.users.${cfg.user}` is a dynamic attribute, and
@@ -13,6 +14,7 @@ in
       description = "operator + opencode service account";
       extraGroups = [ "wheel" ];
       openssh.authorizedKeys.keys = cfg.sshKeys;
+      openssh.authorizedKeys.keyFiles = cfg.sshKeyFiles;
     }
     # Declaring a login password is a deployment choice, so it is only declared in
     # sops mode. `users.mutableUsers` stays at its default (true), so a password
@@ -26,11 +28,13 @@ in
   # key list would leave a machine nothing can log in to.
   assertions = [
     {
-      assertion = haveSopsPassword || cfg.sshKeys != [ ];
+      assertion = haveSopsPassword || haveKeys || cfg.manualSshKeys;
       message = ''
-        devbox: no way to log in. With devbox.secrets != "sops" (or sops selected
-        but secrets/secrets.yaml missing) there is no login password, so
-        devbox.sshKeys must contain at least one PUBLIC key.
+        devbox: no way to log in. There is no login password (secrets != "sops",
+        or the encrypted file is missing) and no key declared. Set one of:
+          devbox.sshKeys      - inline public keys (these go into git)
+          devbox.sshKeyFiles  - paths to key files, read at build time
+          devbox.manualSshKeys = true - if you manage ~/.ssh/authorized_keys yourself
       '';
     }
   ];

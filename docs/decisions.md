@@ -81,6 +81,23 @@ Rejected: declaring a password hash in the plain flake (a public repo invites
 offline cracking of a dev password), and requiring sops for every fork (it is
 the single largest source of "works on my machine" in NixOS configs).
 
+## SSH keys: out of git by default
+
+Public keys are safe to publish, but they are also *yours*: a key in a shared
+repo is a change conflict waiting to happen, and a fork that keeps them
+elsewhere should not have to edit a tracked file. So the recommended path is
+`devbox.sshKeyFiles`, a path on the machine read at evaluation time into
+`/etc/ssh/authorized_keys.d/<user>`.
+
+The `types.path` option is deliberate: a missing file fails evaluation, which is
+what a typo should do. `lib.readFile` also means a rebuild is required after a
+key changes — the trade against keeping keys in git, where a rebuild is required
+anyway.
+
+The third route (`manualSshKeys = true`) works because NixOS skips generating
+`authorized_keys.d` entirely when the declarative lists are empty, leaving
+`~/.ssh/authorized_keys` under your own control.
+
 ## Sandbox: what it is for
 
 The VM already isolates the agent from the NAS, so per-command jails buy little
