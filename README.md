@@ -163,6 +163,58 @@ port forward, or over Tailscale. `opencode pair` prints a one-time pairing link.
 Plain HTTP + basic auth is fine on a LAN or tailnet; put TLS in front before
 exposing it to the internet.
 
+## Project environments
+
+opencode merges configuration from the filesystem root down to the project:
+`opencode.json(c)` at the repo root first, then `.opencode/opencode.json(c)`, with
+the closest file winning. Anything works per project — `mcp`, `permissions`,
+`instructions`, `shell`, `worktree.directory`.
+
+**The shell tool spawns `<shell> -c "<command>"` with cwd set to the project.**
+Verified in `packages/core/src/shell/select.ts` at v2.2.6: `args()` returns
+`["-c", command]` for anything that is not `cmd.exe`/PowerShell, and only
+`fish`/`nu` are rejected as incompatible — a custom path is fine.
+
+So the environment is attached to the *directory*, not to a global setting.
+`shell` is set once, globally, to `agent-shell` (installed by this repo), which
+walks up from the working directory:
+
+| found in an ancestor | dispatch |
+| --- | --- |
+| `.envrc` | `direnv exec <root> bash -c <command>` — nix-direnv caches the profile, ~ms |
+| `flake.nix` only | `nix develop <root> --command bash -c <command>` — re-evaluates each call |
+| neither | plain `bash -c <command>` |
+
+A project therefore declares its own toolchain and the agent can neither forget
+to enter it nor leak between projects:
+
+```sh
+nix flake init                       # devShells.default
+echo 'use flake' > .envrc
+direnv allow                         # required per directory
+```
+
+**Worktree startup script** is where the per-directory parts go, because a fresh
+worktree has no direnv cache and is not allowed yet:
+
+```sh
+direnv allow .
+direnv exec . true     # warm the profile so the first agent command is not slow
+```
+
+Per-project tool policy, when you want it, is a file in the repo:
+
+```
+opencode.json            shell override, extra MCP servers, permissions
+.opencode/opencode.json  same, kept out of the repo root
+.opencode/agent/*.md     custom agents
+.opencode/command/*.md   custom slash commands
+AGENTS.md                project instructions: how to run tests, layout, pitfalls
+```
+
+`AGENTS.md` is the honest place for anything the shell cannot enforce — the
+wrapper guarantees the *environment*, not the commands.
+
 ## Design notes and tradeoffs
 
 - **opencode comes from `nixpkgs-unstable`, not the 26.05 channel.** The channel

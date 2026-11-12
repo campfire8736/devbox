@@ -81,6 +81,23 @@ Rejected: declaring a password hash in the plain flake (a public repo invites
 offline cracking of a dev password), and requiring sops for every fork (it is
 the single largest source of "works on my machine" in NixOS configs).
 
+## The agent's shell is a wrapper, not a setting
+
+A per-project environment could be a per-project `"shell"` value in
+`.opencode/opencode.json`. That works, but it makes the environment a thing every
+project must remember to declare, and it does nothing for worktrees until each
+one is edited.
+
+Instead `shell` is set once, globally, to `agent-shell`, which resolves the
+environment from the working directory (`.envrc` → `direnv exec`, else
+`flake.nix` → `nix develop`). The cost is one process hop per command; the gain
+is that a project's toolchain is a property of its directory, so the agent cannot
+run tests against the wrong interpreter and new worktrees inherit the behaviour
+with no configuration.
+
+direnv is preferred over `nix develop` because nix-direnv caches the built
+profile: milliseconds against a full flake re-evaluation on every command.
+
 ## SSH keys: out of git by default
 
 Public keys are safe to publish, but they are also *yours*: a key in a shared
