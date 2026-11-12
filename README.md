@@ -80,7 +80,7 @@ modules/operator.nix       personal extras: vim, nnn, lazygit, shell aliases (de
 modules/mcp.nix            packages + overlay
 modules/opencode.nix       systemd unit for `opencode serve`
 modules/opencode.json      the three MCP servers
-packages/                  opencode 2.2.7, gitea-mcp 1.13.0, serena 2.1.0
+packages/                  gitea-mcp 1.13.0, serena 2.1.0 (opencode: nixpkgs-unstable)
 scripts/                   secrets init (file + sops), secrets edit, doctor
 ```
 
@@ -165,10 +165,17 @@ exposing it to the internet.
 
 ## Design notes and tradeoffs
 
-- **opencode is a pinned release binary (2.2.7), not a nixpkgs attribute.** The
-  26.05 channel still ships 1.15.10, master 2.2.6, upstream 2.2.7. Pinning the
-  release keeps the CLI independent of the channel; the checksum comes from
-  upstream `SHA256SUMS`.
+- **opencode comes from `nixpkgs-unstable`, not the 26.05 channel.** The channel
+  still ships 1.x. Upstream's release tarball is tempting to pin, but it is
+  linked against `/lib64/ld-linux-x86-64.so.2` and **cannot start on NixOS**
+  (`stub-ld`); the channel builds it from source with bun instead. The
+  `nixpkgs-unstable` input is locked in `flake.lock`, so the version is still
+  pinned — just to a build that runs.
+- **`gitea-mcp` is still a pinned upstream binary**, and that is safe because it
+  is a static Go build with no ELF interpreter (`readelf -l` shows no
+  `PT_INTERP`). Anything dynamically linked must not be shipped this way.
+- **`devbox-doctor` executes each binary**, not just `command -v`: a prebuilt
+  binary can be present and still refuse to start.
 - **The documented MCP config shape is wrong for the shipped binary.** The docs
   and the published `opencode.ai/config.json` show `mcp.servers.<name>`; on
   2.2.7 that yields *No MCP servers configured*. The flat `mcp.<name>` record is

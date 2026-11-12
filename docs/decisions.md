@@ -8,13 +8,31 @@ boundary: an agent with root here cannot reach the NAS apps or the Gitea data
 directory. NixOS makes "what is installed" a single
 evaluation, so the running machine and this repo cannot drift.
 
-## Why a pinned opencode binary instead of a nixpkgs attribute
+## Why opencode comes from nixpkgs-unstable
 
-`nixos-26.05` carries 1.15.10; `master` carries 2.2.6; upstream is at 2.2.7.
-Upstream publishes `opencode-linux-x64.tar.gz` with a `SHA256SUMS` file, so the
-binary can be pinned and verified the same way as `gitea-mcp`, and the CLI
-version stops tracking the channel. Revisit if nixpkgs catches up and the
-channel is bumped.
+`nixos-26.05` carries 1.15.10; `master` carries 2.x and builds it from source
+with bun. Upstream also publishes `opencode-linux-x64.tar.gz`, and pinning that
+looked like the tidy answer — exact version, checksummed, no channel coupling.
+
+It does not run on NixOS. The release binary carries
+`PT_INTERP /lib64/ld-linux-x86-64.so.2`, so the kernel looks for a loader path
+that NixOS deliberately does not provide, and the unit dies with status 127:
+
+```
+Could not start dynamically linked executable: .../opencode-2.2.7/bin/opencode
+NixOS cannot run dynamically linked executables intended for generic linux environments
+```
+
+So the package comes from the `nixpkgs-unstable` input instead. Version
+independence is preserved by `flake.lock` rather than by a hand-written
+`fetchurl` — the pin just points at a build that can start.
+
+`gitea-mcp` remains a pinned release binary because it is a static Go build with
+no interpreter at all; that is the distinction that matters, not "prebuilt or
+not". If a future tool only ships a dynamic binary, the options are, in order:
+package it with `autoPatchelfHook`, build from source in the flake, or enable
+`programs.nix-ld` (the documented escape hatch for generic Linux binaries, at
+the cost of making the system tolerant of unpackaged ELF executables).
 
 ## Why gitea-mcp rather than the GitHub server for our own code
 

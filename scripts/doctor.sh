@@ -53,10 +53,25 @@ for s in gitea github serena; do
 done
 
 echo "== binaries =="
-for b in opencode gitea-mcp github-mcp-server serena; do
-  command -v "$b" >/dev/null 2>&1 && pass "$b" || fail "$b not on PATH"
-done
-info "$(opencode --version 2>/dev/null | head -1)"
+# Presence is not enough: a prebuilt binary on NixOS can exist and still refuse
+# to start (wrong ELF interpreter). Run each one.
+check_bin() {
+  local b=$1; shift
+  if ! command -v "$b" >/dev/null 2>&1; then
+    fail "$b not on PATH"
+    return
+  fi
+  local out
+  if out=$(timeout 40 "$b" "$@" 2>&1); then
+    pass "$b $(printf '%s' "$out" | head -1)"
+  else
+    fail "$b exists but will not run: $(printf '%s' "$out" | head -2 | tr '\n' ' ')"
+  fi
+}
+check_bin opencode --version
+check_bin gitea-mcp -v
+check_bin github-mcp-server --version
+check_bin serena --version   # first run fetches through uv, may take a minute
 
 echo "== service =="
 systemctl is-active --quiet opencode && pass "opencode unit active" || fail "opencode unit: $(systemctl is-active opencode)"
@@ -90,10 +105,14 @@ else
   # code as the operator, and the service listens on every interface.
   if [ "$code" = "401" ]; then
     pass "API requires auth (password from outside the env file)"
-  else
-    fail "API answers $code WITHOUT auth - anyone who reaches port $PORT can drive the agent"
+  elif [ "$code" = "000" ]; then
+    fail "API unreachable - nothing answered on port $PORT (see the service section)"
+  elif [ "$code" = "200" ]; then
+    fail "API answers 200 WITHOUT auth - anyone who reaches port $PORT can drive the agent"
     info "fix: set secrets = \"file\" and give secrets-file-init.sh just a UI password,"
     info "     or set secrets = \"sops\"; or stop exposing the port"
+  else
+    info "API returned $code"
   fi
 fi
 

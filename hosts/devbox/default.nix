@@ -28,7 +28,7 @@
 
     # PUBLIC keys only. Without at least one you cannot log in after install.
     sshKeys = [
-      "REDACTED-ssh-key"
+      # "ssh-ed25519 AAAA... you@laptop"
     ];
 
     # none | file | sops   (modules/options.nix explains each)
