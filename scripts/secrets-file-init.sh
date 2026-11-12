@@ -24,13 +24,31 @@ GH=$(ask_secret "GitHub read-only token (blank to skip)")
 [ -n "$GH" ] && printf 'GITHUB_PERSONAL_ACCESS_TOKEN=%s\n' "$GH" >> "$ENVFILE.tmp"
 OR=$(ask_secret "OpenRouter API key (blank to skip)")
 [ -n "$OR" ] && printf 'OPENROUTER_API_KEY=%s\n' "$OR" >> "$ENVFILE.tmp"
-UI=$(ask_secret "Password for the opencode web UI")
-[ -n "$UI" ] && printf 'OPENCODE_SERVER_PASSWORD=%s\n' "$UI" >> "$ENVFILE.tmp"
+while :; do
+  UI=$(ask_secret "Password for the opencode web UI (required)")
+  [ -n "$UI" ] && break
+  echo "  required: without it opencode invents a new password on every restart" >&2
+done
+printf 'OPENCODE_SERVER_PASSWORD=%s\n' "$UI" >> "$ENVFILE.tmp"
 
 mv "$ENVFILE.tmp" "$ENVFILE"
 chmod 600 "$ENVFILE"
 
 echo
 echo "wrote $ENVFILE ($(stat -c '%a %U:%G' "$ENVFILE"))"
-echo "then:  sudo systemctl restart opencode"
-echo "the file is read by systemd only; user $USER_NAME cannot read it."
+echo
+echo "Web UI login:  username  opencode   (NOT \"$USER_NAME\" - that is the Unix account)"
+echo "               password  the one you just typed"
+echo
+# Writing the file is not enough: the unit only loads it when the option says so.
+mode=$( cd "$REPO_ROOT" && nix eval --raw .#nixosConfigurations.devbox.config.devbox.secrets 2>/dev/null || echo unknown )
+if [ "$mode" != "file" ]; then
+  echo "WARNING: devbox.secrets is currently \"$mode\", not \"file\"."
+  echo "  The opencode unit only loads this file in \"file\" mode. Set"
+  echo "  secrets = \"file\" in hosts/devbox/default.nix, commit, then:"
+  echo "      sudo nixos-rebuild switch --flake ~/devbox#devbox"
+  echo "  'systemctl restart opencode' alone will NOT pick it up."
+else
+  echo "mode is \"file\". If the service predates this file:"
+  echo "      sudo systemctl restart opencode"
+fi

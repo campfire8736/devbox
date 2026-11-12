@@ -44,7 +44,7 @@
     #   file -> env file on the box, created by scripts/secrets-file-init.sh
     #   sops -> encrypted secrets/secrets.yaml, created by
     #           scripts/secrets-sops-init.sh  (run it BEFORE installing)
-    secrets = "none";
+    secrets = "file";
   };
 
   system.stateVersion = "26.05";
