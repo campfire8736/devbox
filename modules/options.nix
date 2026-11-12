@@ -73,6 +73,17 @@
       '';
     };
 
+    docker = {
+      enable = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = ''
+          Run a rootful Docker daemon and add the operator to the docker group.
+          The group is root-equivalent; enable it when a project's tests need it.
+        '';
+      };
+    };
+
     secretsFile = lib.mkOption {
       type = lib.types.str;
       default = "/var/lib/devbox/secrets.env";

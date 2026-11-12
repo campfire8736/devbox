@@ -16,6 +16,7 @@
     ../../modules/secrets.nix
     ../../modules/dev.nix
     ../../modules/operator.nix
+    ../../modules/docker.nix
     ../../modules/mcp.nix
     ../../modules/opencode.nix
   ];
@@ -45,6 +46,9 @@
     #   sops -> encrypted secrets/secrets.yaml, created by
     #           scripts/secrets-sops-init.sh  (run it BEFORE installing)
     secrets = "file";
+
+    # a project's test suite needs a system Docker daemon
+    docker.enable = true;
   };
 
   system.stateVersion = "26.05";
