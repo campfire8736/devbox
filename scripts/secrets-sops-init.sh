@@ -41,14 +41,19 @@ echo
 echo "== values (input is not echoed for secrets) =="
 GITEA_HOST=$(ask "Gitea URL as seen from the VM (e.g. http://gitea.local:8085)")
 GITEA_TOKEN=$(ask_secret "Gitea token for the devbox")
-GITHUB_PAT=$(ask_secret "GitHub fine-grained token (read-only)")
-OPENROUTER_KEY=$(ask_secret "OpenRouter API key")
-UI_PASS=$(ask_secret "Password for the opencode web UI")
+GITHUB_PAT=$(ask_secret "GitHub fine-grained token, read-only (blank to skip)")
+OPENROUTER_KEY=$(ask_secret "OpenRouter API key (blank to skip)")
+while :; do
+  UI_PASS=$(ask_secret "Password for the opencode web UI (required)")
+  [ -n "$UI_PASS" ] && break
+  echo "  required: without it the API is open to anyone who reaches the port" >&2
+done
 
 echo
 while :; do
-  P1=$(ask_secret "Login password for user dev")
+  P1=$(ask_secret "Login password for user dev (required)")
   P2=$(ask_secret "Repeat it")
+  if [ -z "$P1" ]; then echo "  required" >&2; continue; fi
   [ "$P1" = "$P2" ] && break
   echo "  mismatch, try again" >&2
 done
@@ -64,7 +69,7 @@ OPENROUTER_API_KEY: $(quote "$OPENROUTER_KEY")
 OPENCODE_SERVER_PASSWORD: $(quote "$UI_PASS")
 EOF
 
-sops --encrypt --in-place "$ENVFILE"
+( cd "$REPO_ROOT" && sops --encrypt --in-place "secrets/secrets.yaml" )
 unset P1 P2 HASH GITEA_TOKEN GITHUB_PAT OPENROUTER_KEY UI_PASS
 
 echo
@@ -75,7 +80,20 @@ cd "$REPO_ROOT"
 git add .sops.yaml secrets/secrets.yaml
 git -c user.name="${GIT_USER_NAME:-devbox}" -c user.email="${GIT_USER_EMAIL:-devbox@localhost}" \
   commit -m "secrets: add encrypted devbox secrets" --quiet || echo "   (nothing new to commit)"
-echo "   committing succeeded; push it with:  git push"
+echo "   committed; push it with:  git push"
+
+echo
+echo "== verifying the flake sees the secrets =="
+if out=$(nix eval --raw .#nixosConfigurations.devbox.config.sops.secrets.dev_password_hash.path 2>/dev/null); then
+  echo "   ok: sops is active, secrets will land under $(dirname "$out")"
+else
+  cat >&2 <<'WARN'
+   PROBLEM: the flake does not see sops. Two causes:
+     - hosts/devbox/default.nix still says secrets = "none"
+     - secrets/secrets.yaml is not committed (an uncommitted file is
+       invisible to a flake evaluated from git)
+WARN
+fi
 
 cat <<EOF
 
@@ -86,7 +104,7 @@ BACK THIS UP NOW -- without it the secrets are unrecoverable:
 
 Copy it into your password manager or an offline location. It is gitignored.
 
-Then install:
+Then set `secrets = "sops"` in hosts/devbox/default.nix, commit, and install:
 
     sudo nix --extra-experimental-features 'nix-command flakes' \\
       run github:nix-community/disko -- --mode disko ./hosts/devbox/disko.nix

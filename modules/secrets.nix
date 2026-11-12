@@ -36,6 +36,8 @@ in
     templates."devbox.env" = {
       owner = "root";
       mode = "0400";
+      # a changed secret restarts the consumer, so the new env is picked up
+      restartUnits = [ "opencode.service" ];
       content = ''
         GITEA_HOST=${config.sops.placeholder.GITEA_HOST}
         GITEA_TOKEN=${config.sops.placeholder.GITEA_TOKEN}

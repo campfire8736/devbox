@@ -43,6 +43,11 @@ opencode serves its web UI, and you log in to a model provider in the browser.
 | `file` | one env file on the box (`/var/lib/devbox/secrets.env`, root-only) | no | `scripts/secrets-file-init.sh` |
 | `sops` | encrypted in this repo, decrypted at boot by the host's age key | ciphertext | `scripts/secrets-sops-init.sh` |
 
+The shipped `hosts/devbox/default.nix` uses `none`. To use sops, set
+`secrets = "sops"` there and run `scripts/secrets-sops-init.sh` **before**
+installing — the script finishes by evaluating the flake, so a wrong mode or an
+uncommitted `secrets.yaml` is reported instead of silently ignored.
+
 **Why `sops` is opt-in and not the default.** sops-nix and agenix both encrypt
 *to specific recipients* — that is the whole point, and it is also why they
 bind a repo to one deployment: a fork must rekey and re-encrypt, which is
@@ -91,6 +96,12 @@ scripts/                   secrets init (file + sops), secrets edit, doctor
 git clone <repo-url> /tmp/devbox && cd /tmp/devbox
 lsblk     # expect vda; if it is sda, edit hosts/devbox/disko.nix first
 
+# evaluate the whole config first: seconds, and catches Nix errors before
+# partitioning a disk
+nix eval --raw .#nixosConfigurations.devbox.config.system.build.toplevel.drvPath; echo
+# if you chose sops, this must resolve (it errors when the module is off):
+nix eval --raw .#nixosConfigurations.devbox.config.sops.secrets.dev_password_hash.path; echo
+
 sudo nix --extra-experimental-features 'nix-command flakes' \
   run github:nix-community/disko -- --mode disko ./hosts/devbox/disko.nix
 
@@ -105,28 +116,40 @@ sops setup, if you chose it, happens in `scripts/secrets-sops-init.sh`
 **before** the install (it prompts, encrypts and commits; it never asks you to
 paste values anywhere else).
 
+4. After the reboot, clone the repo again — the `/tmp/devbox` clone lived in the
+   installer's memory and is gone. This copy is the one you keep:
+
+```sh
+git clone <repo-url> ~/devbox
+cd ~/devbox && sudo nixos-rebuild switch --flake .#devbox   # also writes flake.lock
+```
+
+Commit that generated `flake.lock`: it pins all four inputs to exact revisions.
+
 ## Verify
 
 ```sh
-sudo bash ~/devbox/scripts/doctor.sh
+sudo devbox-doctor
 ```
 
-PASS/FAIL for the secrets layer (whichever mode), the config symlink and the
-three servers, the binaries, the unit state, the listener, the API refusing
-unauthenticated calls, both forge tokens against their real APIs, and a live
-`gitea-mcp` stdio handshake. With `secrets = "none"` the credential checks are
-reported as information rather than failures.
+It is a system package (`modules/dev.nix`), so it works without a clone; the
+repo copy is the same script at `scripts/doctor.sh`. PASS/FAIL for the secrets
+layer (whichever mode), the config symlink and the three servers, the binaries,
+the unit state, the listener, the API refusing unauthenticated calls, both forge
+tokens against their real APIs, and a live `gitea-mcp` stdio handshake. With
+`secrets = "none"` the credential checks are reported as information rather
+than failures.
 
 ## Day 2
 
 ```sh
-git clone <repo-url> ~/devbox    # once
 cd ~/devbox && git pull
 sudo nixos-rebuild switch --flake ~/devbox#devbox
 ```
 
 Roll back with `sudo nixos-rebuild switch --rollback`. Change a secret in sops
-mode with `scripts/secrets-edit.sh`, then commit and rebuild.
+mode with `scripts/secrets-edit.sh`, then commit and rebuild — the unit restarts
+itself because the template declares `restartUnits`.
 
 ## Using it from a phone
 

@@ -1,4 +1,15 @@
-{ pkgs, ... }:
+{ config, pkgs, ... }:
+let
+  cfg = config.devbox;
+
+  # The health check must not depend on a git clone being present: the install
+  # runs from the installer's /tmp, which is gone after the first reboot.
+  doctor = pkgs.writeShellScriptBin "devbox-doctor" ''
+    export DEVBOX_USER=${cfg.user}
+    export DEVBOX_PORT=${toString cfg.webPort}
+    exec ${pkgs.bash}/bin/bash ${../scripts/doctor.sh} "$@"
+  '';
+in
 {
   environment.systemPackages = with pkgs; [
     git
@@ -11,7 +22,7 @@
     tmux
     htop
     unzip
-    nodejs_22
+    nodejs
     python3
     uv
     bubblewrap
@@ -20,6 +31,7 @@
     sops
     age
     ssh-to-age
+    doctor
   ];
 
   programs.direnv = {

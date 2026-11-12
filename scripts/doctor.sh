@@ -86,7 +86,15 @@ if [ -n "$ENVF" ] && grep -q '^OPENCODE_SERVER_PASSWORD=.' "$ENVF"; then
   out=$(printf '%s\n' "$req" | timeout 25 gitea-mcp -t stdio 2>/dev/null | head -c 400)
   case "$out" in *'"result"'*) pass "gitea-mcp stdio handshake" ;; *) fail "gitea-mcp handshake: ${out:0:120}" ;; esac
 else
-  info "no UI password set - /api returns $code (unprotected). Set OPENCODE_SERVER_PASSWORD."
+  # Not a missing feature like an absent token: an unauthenticated /api can run
+  # code as the operator, and the service listens on every interface.
+  if [ "$code" = "401" ]; then
+    pass "API requires auth (password from outside the env file)"
+  else
+    fail "API answers $code WITHOUT auth - anyone who reaches port $PORT can drive the agent"
+    info "fix: set secrets = \"file\" and give secrets-file-init.sh just a UI password,"
+    info "     or set secrets = \"sops\"; or stop exposing the port"
+  fi
 fi
 
 echo
