@@ -15,6 +15,7 @@
     ../../modules/users.nix
     ../../modules/secrets.nix
     ../../modules/dev.nix
+    ../../modules/operator.nix
     ../../modules/mcp.nix
     ../../modules/opencode.nix
   ];
@@ -27,7 +28,7 @@
 
     # PUBLIC keys only. Without at least one you cannot log in after install.
     sshKeys = [
-      # "ssh-ed25519 AAAA... you@laptop"
+      "REDACTED-ssh-key"
     ];
 
     # none | file | sops   (modules/options.nix explains each)

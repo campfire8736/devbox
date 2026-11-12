@@ -75,7 +75,8 @@ modules/options.nix        every deployment value, with defaults
 modules/base.nix           nix flakes, weekly GC, ssh, firewall
 modules/users.nix          operator account, sudo policy, authorized keys
 modules/secrets.nix        none / file / sops wiring
-modules/dev.nix            git, gh, rg, fd, jq, node 22, python3, uv, bwrap, sops, age
+modules/dev.nix            git, gh, rg, fd, jq, node, python3, uv, bwrap, sops, age
+modules/operator.nix       personal extras: vim, nnn, lazygit, shell aliases (delete freely)
 modules/mcp.nix            packages + overlay
 modules/opencode.nix       systemd unit for `opencode serve`
 modules/opencode.json      the three MCP servers
