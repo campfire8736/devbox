@@ -2,8 +2,9 @@
 #  THE ONLY FILE YOU NEED TO EDIT
 #
 #  Everything else is generic. Fork, change these values, install.
-#  As shipped you get a key-only box on /dev/vda with no credentials at all,
-#  and opencode asks you to log in to a provider in the browser.
+#  As shipped you get a key-only box on /dev/vda. Credentials are optional: put
+#  them in /var/lib/devbox/secrets.env with scripts/secrets-file-init.sh, or
+#  skip it and log in to a model provider in the browser.
 # ─────────────────────────────────────────────────────────────────────────────
 { ... }:
 {
@@ -13,7 +14,6 @@
     ../../modules/options.nix
     ../../modules/base.nix
     ../../modules/users.nix
-    ../../modules/secrets.nix
     ../../modules/dev.nix
     ../../modules/operator.nix
     ../../modules/docker.nix
@@ -39,13 +39,6 @@
       # "ssh-ed25519 AAAA... you@laptop"
     ];
     manualSshKeys = true;
-
-    # none | file | sops   (modules/options.nix explains each)
-    #   none -> no credentials, provider login happens in the UI
-    #   file -> env file on the box, created by scripts/secrets-file-init.sh
-    #   sops -> encrypted secrets/secrets.yaml, created by
-    #           scripts/secrets-sops-init.sh  (run it BEFORE installing)
-    secrets = "file";
 
     # a project's test suite needs a system Docker daemon
     docker.enable = true;

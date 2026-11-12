@@ -12,9 +12,9 @@ pass() { printf 'PASS  %s\n' "$*"; ok=$((ok+1)); }
 fail() { printf 'FAIL  %s\n' "$*"; bad=$((bad+1)); }
 info() { printf '      %s\n' "$*"; }
 
+SECRETS_FILE="${DEVBOX_SECRETS_FILE:-/var/lib/devbox/secrets.env}"
 ENVF=""
-[ -r /run/secrets-rendered/devbox.env ] && ENVF=/run/secrets-rendered/devbox.env
-[ -z "$ENVF" ] && [ -r /var/lib/devbox/secrets.env ] && ENVF=/var/lib/devbox/secrets.env
+[ -r "$SECRETS_FILE" ] && ENVF=$SECRETS_FILE
 
 echo "== system =="
 info "$(nixos-version 2>/dev/null || echo 'nixos-version unavailable')"
@@ -23,7 +23,6 @@ info "disk: $(df -h / | awk 'NR==2{print $4" free of "$2}')"
 info "store: $(du -sh /nix/store 2>/dev/null | cut -f1)"
 
 echo "== secrets =="
-if [ -f /var/lib/sops-nix/key.txt ]; then pass "age identity present (sops mode)"; fi
 if [ -n "$ENVF" ]; then
   pass "credentials env file: $ENVF"
   for k in GITEA_HOST GITEA_TOKEN GITHUB_PERSONAL_ACCESS_TOKEN OPENROUTER_API_KEY OPENCODE_SERVER_PASSWORD; do
@@ -31,7 +30,7 @@ if [ -n "$ENVF" ]; then
     [ -n "$v" ] && info "$k set (${#v} chars)"
   done
 else
-  info "no credentials file -> secrets = \"none\" (provider login happens in the UI)"
+  info "no $SECRETS_FILE -> no credentials (provider login happens in the UI)"
 fi
 
 echo "== login =="
@@ -44,34 +43,14 @@ else
   pass "$USER_NAME has a password set"
 fi
 
-# Never parse `systemctl show -p LoadCredential`: for an array it prints
-# "[unprintable]". Check the effect instead - systemd materialises each
-# credential at /run/credentials/<unit>/<id>, and exports it to the process.
-cred_dir=/run/credentials/opencode.service
-if [ -d "$cred_dir" ]; then
-  if [ -s "$cred_dir/env" ]; then
-    pass "unit credential loaded ($cred_dir/env)"
-    if grep -q '^OPENCODE_SERVER_PASSWORD=.' "$cred_dir/env"; then
-      pass "OPENCODE_SERVER_PASSWORD present in the credential file"
-    else
-      fail "OPENCODE_SERVER_PASSWORD missing or empty in the credential file"
-      info "  opencode then invents a password per start; re-run the secrets script"
-    fi
-  else
-    fail "credential dir exists but $cred_dir/env is empty"
-  fi
-else
-  # Present but not materialised means the file was mounted after the last start.
-  info "no credential dir: devbox.secrets != \"file\", or the unit has not restarted"
-fi
-
 pid=$(systemctl show -p MainPID --value opencode 2>/dev/null)
-if [ -n "$pid" ] && [ "$pid" != "0" ] && [ -r "/proc/$pid/environ" ]; then
+if [ -n "$ENVF" ] && grep -q '^OPENCODE_SERVER_PASSWORD=.' "$ENVF" \
+   && [ -n "$pid" ] && [ "$pid" != "0" ] && [ -r "/proc/$pid/environ" ]; then
   if tr '\0' '\n' < "/proc/$pid/environ" | grep -q '^OPENCODE_SERVER_PASSWORD=.'; then
     pass "running opencode process has OPENCODE_SERVER_PASSWORD"
   else
     fail "running process has no OPENCODE_SERVER_PASSWORD"
-    info "  the credential is configured but did not reach the process:"
+    info "  $SECRETS_FILE sets it, but the process predates the file:"
     info "  sudo systemctl restart opencode"
   fi
 fi
@@ -83,6 +62,26 @@ CFG="/home/$USER_NAME/.config/opencode/opencode.json"
 for s in gitea github serena; do
   grep -q "\"$s\"" "$CFG" 2>/dev/null && pass "$s server configured" || fail "$s server not in config"
 done
+
+[ -e "/home/$USER_NAME/.config/opencode/AGENTS.md" ] && pass "global AGENTS.md present" || fail "global AGENTS.md missing"
+
+echo "== agent environment =="
+# The agent's commands inherit the service's environment, not a login shell's.
+if [ -n "$pid" ] && [ "$pid" != "0" ] && [ -r "/proc/$pid/environ" ]; then
+  if tr '\0' '\n' < "/proc/$pid/environ" | grep -q '^PATH=.*/run/current-system/sw/bin'; then
+    pass "service PATH includes the system profile"
+  else
+    fail "service PATH lacks /run/current-system/sw/bin: the agent will miss tools"
+  fi
+  if tr '\0' '\n' < "/proc/$pid/environ" | grep -q '^DIRENV_CONFIG=/etc/direnv$'; then
+    pass "service sees nix-direnv (DIRENV_CONFIG)"
+  else
+    fail "service lacks DIRENV_CONFIG: \`use flake\` re-evaluates on every command"
+  fi
+fi
+[ -e /lib64/ld-linux-x86-64.so.2 ] && pass "nix-ld loader present (generic binaries run)" || fail "no /lib64/ld-linux-x86-64.so.2"
+/usr/bin/env bash -c true 2>/dev/null && [ -x /bin/bash ] && pass "envfs: /bin/bash resolves" || fail "/bin/bash missing (envfs)"
+nix registry list 2>/dev/null | grep -q 'flake:devbox ' && pass "flake registry has devbox" || fail "flake registry lacks devbox"
 
 echo "== binaries =="
 # Presence is not enough: a prebuilt binary on NixOS can exist and still refuse
@@ -108,7 +107,11 @@ check_bin() {
 check_bin opencode --version
 check_bin gitea-mcp -v
 check_bin github-mcp-server --version
-check_bin serena --version   # first run fetches through uv, may take a minute
+if [ -n "${DEVBOX_DOCTOR_OFFLINE:-}" ]; then
+  info "serena skipped (DEVBOX_DOCTOR_OFFLINE)"
+else
+  check_bin serena --version   # first run fetches through uv, may take a minute
+fi
 
 echo "== service =="
 systemctl is-active --quiet opencode && pass "opencode unit active" || fail "opencode unit: $(systemctl is-active opencode)"
@@ -148,13 +151,13 @@ else
     # usable configuration.
     info "API is locked by an AUTOGENERATED password - it changes on every"
     info "  restart and is written to the journal. Set OPENCODE_SERVER_PASSWORD"
-    info "  (secrets = \"file\" or \"sops\") for a stable one."
+    info "  in $SECRETS_FILE (scripts/secrets-file-init.sh) for a stable one."
   elif [ "$code" = "000" ]; then
     fail "API unreachable - nothing answered on port $PORT (see the service section)"
   elif [ "$code" = "200" ]; then
     fail "API answers 200 WITHOUT auth - anyone who reaches port $PORT can drive the agent"
-    info "fix: set secrets = \"file\" and give secrets-file-init.sh just a UI password,"
-    info "     or set secrets = \"sops\"; or stop exposing the port"
+    info "fix: run scripts/secrets-file-init.sh (a UI password is enough),"
+    info "     then: sudo systemctl restart opencode; or stop exposing the port"
   else
     info "API returned $code"
   fi
@@ -162,3 +165,4 @@ fi
 
 echo
 echo "summary: $ok passed, $bad failed"
+[ "$bad" -eq 0 ]

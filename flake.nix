@@ -10,23 +10,35 @@
       url = "github:nix-community/disko";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    sops-nix = {
-      url = "github:Mic92/sops-nix";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
   };
 
   outputs =
-    { self, nixpkgs, nixpkgs-unstable, disko, sops-nix, ... }:
+    { self, nixpkgs, nixpkgs-unstable, disko, ... }:
+    let
+      system = "x86_64-linux";
+      pkgs = nixpkgs.legacyPackages.${system};
+    in
     {
       nixosConfigurations.devbox = nixpkgs.lib.nixosSystem {
-        system = "x86_64-linux";
-        specialArgs = { unstable = nixpkgs-unstable; };
+        inherit system;
+        specialArgs = {
+          unstable = nixpkgs-unstable;
+          # registered as the `devbox` flake on the box, so a project's .envrc
+          # can say `use flake devbox#node` without a clone of this repo
+          devboxFlake = self;
+        };
         modules = [
           disko.nixosModules.disko
-          sops-nix.nixosModules.sops
           ./hosts/devbox
         ];
+      };
+
+      # Shared project environments: see shells.nix and docs/decisions.md.
+      devShells.${system} = import ./shells.nix { inherit pkgs; };
+
+      # `nix flake check` boots the box in a VM and runs devbox-doctor.
+      checks.${system}.devbox = import ./tests/devbox.nix {
+        inherit pkgs self;
       };
     };
 }

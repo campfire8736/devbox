@@ -1,6 +1,5 @@
-# never commit the age identity or any plaintext secret material
-secrets/*.agekey
-secrets/*.key
-secrets/secrets.plain.yaml
+# never commit plaintext secrets
+secrets.env
+*.env
 result
 result-*

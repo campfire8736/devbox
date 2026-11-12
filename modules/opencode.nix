@@ -1,34 +1,66 @@
 { config, lib, pkgs, ... }:
 let
   cfg = config.devbox;
+  home = "/home/${cfg.user}";
 
-  haveSopsEnv = cfg.secrets == "sops" && builtins.pathExists ../secrets/secrets.yaml;
-  # sops selected without a committed secrets file behaves like "none" rather
-  # than pointing LoadCredential at a path that does not exist.
-  credentials = cfg.secrets == "file" || haveSopsEnv;
+  # Generated rather than a static JSON file: commands are store paths, so the
+  # config cannot drift from what is installed and does not depend on PATH.
+  opencodeConfig = {
+    "$schema" = "https://opencode.ai/config.json";
+    shell = lib.getExe pkgs.devbox.agent-shell;
+    # The documented `mcp.servers.<name>` shape yields "No MCP servers configured"
+    # on 2.2.x; the flat `mcp.<name>` record is what the binary parses.
+    mcp = {
+      gitea = {
+        type = "local";
+        command = [ (lib.getExe pkgs.devbox.gitea-mcp) "-t" "stdio" ];
+        environment = {
+          GITEA_HOST = "{env:GITEA_HOST}";
+          GITEA_ACCESS_TOKEN = "{env:GITEA_TOKEN}";
+          GITEA_SCOPES = "repository,file,branch,issue,pull_request,project,wiki,search";
+        };
+      };
+      github = {
+        type = "local";
+        command = [
+          (lib.getExe pkgs.github-mcp-server)
+          "stdio"
+          "--read-only"
+          "--toolsets"
+          "repos,issues,pull_requests"
+        ];
+        environment.GITHUB_PERSONAL_ACCESS_TOKEN = "{env:GITHUB_PERSONAL_ACCESS_TOKEN}";
+      };
+      serena = {
+        type = "local";
+        command = [
+          (lib.getExe pkgs.devbox.serena)
+          "start-mcp-server"
+          "--context"
+          "agent"
+          "--project-from-cwd"
+        ];
+      };
+    };
+  };
 
-  # sops renders into /run/secrets-rendered at activation; "file" mode reads the
-  # operator-provided path directly.
-  envFile = if haveSopsEnv then config.sops.templates."devbox.env".path else cfg.secretsFile;
+  cfgFile = pkgs.writeText "opencode.json" (builtins.toJSON opencodeConfig);
 
-  cfgFile = pkgs.writeText "opencode.json" (builtins.readFile ./opencode.json);
+  # opencode reads ~/.config/opencode/AGENTS.md as global instructions.
+  agentsFile = pkgs.writeText "AGENTS.md" (import ./agents-md.nix { inherit cfg; });
 
   start = pkgs.writeShellScript "opencode-start" ''
-    if [ -f "''${CREDENTIALS_DIRECTORY:-}/env" ]; then
-      set -a
-      . "$CREDENTIALS_DIRECTORY/env"
-      set +a
-    fi
     export OPENCODE_DISABLE_AUTOUPDATE=1
-    exec ${pkgs.devbox.opencode}/bin/opencode serve --hostname 0.0.0.0 --port ${toString cfg.webPort}
+    exec ${lib.getExe pkgs.devbox.opencode} serve --hostname 0.0.0.0 --port ${toString cfg.webPort}
   '';
 in
 {
   systemd.tmpfiles.rules = [
     "d ${cfg.workspaceDir} 0755 ${cfg.user} users -"
-    "d /home/${cfg.user}/.config 0755 ${cfg.user} users -"
-    "d /home/${cfg.user}/.config/opencode 0755 ${cfg.user} users -"
-    "L+ /home/${cfg.user}/.config/opencode/opencode.json - - - - ${cfgFile}"
+    "d ${home}/.config 0755 ${cfg.user} users -"
+    "d ${home}/.config/opencode 0755 ${cfg.user} users -"
+    "L+ ${home}/.config/opencode/opencode.json - - - - ${cfgFile}"
+    "L+ ${home}/.config/opencode/AGENTS.md - - - - ${agentsFile}"
   ];
 
   systemd.services.opencode = {
@@ -37,38 +69,36 @@ in
     wants = [ "network-online.target" ];
     after = [ "network-online.target" ];
 
-    # MCP servers are spawned by opencode and inherit this PATH.
+    # The agent's shell commands inherit this PATH, so it is the operator's PATH:
+    # the setuid wrappers (sudo) and the whole system profile. A hand-picked list
+    # here silently hid gcc, make and docker from the agent.
     path = [
-      pkgs.devbox.opencode
-      pkgs.devbox.gitea-mcp
-      pkgs.github-mcp-server
-      pkgs.devbox.serena
-      pkgs.git
-      pkgs.gh
-      pkgs.ripgrep
-      pkgs.fd
-      pkgs.jq
-      pkgs.bash
-      pkgs.coreutils
-      pkgs.nodejs_22
-      pkgs.python3
-      pkgs.uv
-      pkgs.openssh
-      pkgs.nix
+      "/run/wrappers"
+      "/run/current-system/sw"
     ];
 
     environment = {
-      HOME = "/home/${cfg.user}";
-      XDG_CONFIG_HOME = "/home/${cfg.user}/.config";
-      XDG_DATA_HOME = "/home/${cfg.user}/.local/share";
-      XDG_CACHE_HOME = "/home/${cfg.user}/.cache";
+      HOME = home;
+      XDG_CONFIG_HOME = "${home}/.config";
+      XDG_DATA_HOME = "${home}/.local/share";
+      XDG_CACHE_HOME = "${home}/.cache";
+      # Login shells get this from environment.variables; a service does not.
+      # Without it direnv never loads nix-direnv, and `use flake` falls back to
+      # direnv's uncached built-in that re-evaluates on every agent command.
+      DIRENV_CONFIG = "/etc/direnv";
     };
+
+    # A changed secrets file is picked up on restart; nothing to rebuild.
+    restartTriggers = [ cfgFile agentsFile ];
 
     serviceConfig = {
       User = cfg.user;
       Group = "users";
       WorkingDirectory = cfg.workspaceDir;
-      LoadCredential = lib.optionals credentials [ "env:${envFile}" ];
+      # `-`: a missing file is not an error, the box just has no credentials.
+      # Not a systemd credential: the same account has passwordless sudo, so
+      # hiding the file from it would protect nothing.
+      EnvironmentFile = "-${cfg.secretsFile}";
       ExecStart = start;
       Restart = "always";
       RestartSec = 5;

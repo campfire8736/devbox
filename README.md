@@ -22,7 +22,7 @@ devbox = {
   timeZone = "Europe/Paris";
   webPort  = 4096;
   sshKeyFiles = [ /etc/devbox/authorized_keys ];   # or sshKeys = [ "ssh-ed25519 ..." ]
-  secrets  = "none";        # none | file | sops
+  docker.enable = true;
 };
 ```
 
@@ -31,57 +31,46 @@ user of mine — those are options in `modules/options.nix`. The two things a
 fork genuinely has to touch are your SSH key and your disk device
 (`hosts/devbox/disko.nix`, `/dev/vda` for a KVM guest).
 
-Nothing here is secret. There is no required `secrets.yaml`, no key to
-generate, no re-encryption step: with `secrets = "none"` the machine boots,
-opencode serves its web UI, and you log in to a model provider in the browser.
+Nothing here is secret, and nothing secret is required to boot.
 
-## Secrets: three modes, pick one
+## Secrets: one env file on the box, optional
 
-| mode | where the credentials live | in git? | setup |
-| --- | --- | --- | --- |
-| `none` | nowhere — opencode asks you to log in to a provider in the UI | — | none |
-| `file` | one env file on the box (`/var/lib/devbox/secrets.env`, root-only) | no | `scripts/secrets-file-init.sh` |
-| `sops` | encrypted in this repo, decrypted at boot by the host's age key | ciphertext | `scripts/secrets-sops-init.sh` |
+Credentials live in `/var/lib/devbox/secrets.env` (`devbox.secretsFile`),
+root-only, never in git. `sudo scripts/secrets-file-init.sh` prompts for each
+value, writes the file and restarts the service:
 
-The shipped `hosts/devbox/default.nix` uses `none`. To use sops, set
-`secrets = "sops"` there and run `scripts/secrets-sops-init.sh` **before**
-installing — the script finishes by evaluating the flake, so a wrong mode or an
-uncommitted `secrets.yaml` is reported instead of silently ignored.
+| variable | used by |
+| --- | --- |
+| `OPENCODE_SERVER_PASSWORD` | basic auth on the API/web UI — set it, or opencode invents one per start |
+| `GITEA_HOST`, `GITEA_TOKEN` | the `gitea` MCP server |
+| `GITHUB_PERSONAL_ACCESS_TOKEN` | the `github` MCP server (read-only PAT) |
+| `OPENROUTER_API_KEY` | model provider, if you do not log in through the UI |
 
-**Why `sops` is opt-in and not the default.** sops-nix and agenix both encrypt
-*to specific recipients* — that is the whole point, and it is also why they
-bind a repo to one deployment: a fork must rekey and re-encrypt, which is
-exactly the "changes" a reusable repo should not demand. So the generic path is
-`none` or `file`, and `sops` is a deliberate upgrade once a box is yours.
-
-Use `sops` when you want the box rebuildable from the repo alone (no
-out-of-band file to lose track of), and you are willing to keep one age
-identity backed up. Use `file` when you would rather have no encryption
-machinery at all — the VM is the boundary, and the file is root-only and handed
-to the service as a systemd credential.
-
-In `sops` mode the secrets are committed **encrypted** (`secrets/secrets.yaml`),
-the login password hash included, and the age identity lives only at
-`/var/lib/sops-nix/key.txt`. Never commit that file.
+The unit reads it with `EnvironmentFile=-…`: a missing file is not an error,
+the box just has no credentials and opencode asks you to log in to a provider
+in the browser. Changing a value needs a `systemctl restart opencode`, not a
+rebuild. Why not sops/agenix: see `docs/decisions.md`.
 
 ## Layout
 
 ```
-flake.nix                  nixosConfigurations.devbox
+flake.nix                  nixosConfigurations.devbox, devShells, checks
 hosts/devbox/default.nix   ← the only file you edit
 hosts/devbox/disko.nix     disk layout (virtio /dev/vda, GPT + ESP + ext4)
 hosts/devbox/hardware.nix  KVM guest profile, systemd-boot
 modules/options.nix        every deployment value, with defaults
 modules/base.nix           nix flakes, weekly GC, ssh, firewall
 modules/users.nix          operator account, sudo policy, authorized keys
-modules/secrets.nix        none / file / sops wiring
-modules/dev.nix            git, gh, rg, fd, jq, node, python3, uv, bwrap, sops, age
+modules/dev.nix            toolchain, nix-ld, envfs, direnv, the `devbox` flake registry entry
+modules/docker.nix         optional Docker daemon for test suites
 modules/operator.nix       personal extras: vim, nnn, lazygit, shell aliases (delete freely)
 modules/mcp.nix            packages + overlay
-modules/opencode.nix       systemd unit for `opencode serve`
-modules/opencode.json      the three MCP servers
-packages/                  gitea-mcp 1.13.0, serena 2.1.0 (opencode: nixpkgs-unstable)
-scripts/                   secrets init (file + sops), secrets edit, doctor
+modules/opencode.nix       systemd unit, generated opencode.json
+modules/agents-md.nix      the agent's global AGENTS.md
+shells.nix                 shared project environments: base, node, python, rust, go
+packages/                  gitea-mcp, serena, agent-shell, devbox-project
+tests/devbox.nix           VM test: boots the host config, runs devbox-doctor
+scripts/                   secrets-file-init, doctor
 ```
 
 ## Install
@@ -100,32 +89,26 @@ lsblk     # expect vda; if it is sda, edit hosts/devbox/disko.nix first
 # evaluate the whole config first: seconds, and catches Nix errors before
 # partitioning a disk
 nix eval --raw .#nixosConfigurations.devbox.config.system.build.toplevel.drvPath; echo
-# if you chose sops, this must resolve (it errors when the module is off):
-nix eval --raw .#nixosConfigurations.devbox.config.sops.secrets.dev_password_hash.path; echo
 
 sudo nix --extra-experimental-features 'nix-command flakes' \
   run github:nix-community/disko -- --mode disko ./hosts/devbox/disko.nix
-
-# only for secrets = "sops": lets the installed system decrypt on first boot
-sudo install -Dm600 secrets/devbox.agekey /mnt/var/lib/sops-nix/key.txt
 
 sudo nixos-install --flake .#devbox --no-root-password
 reboot
 ```
 
-sops setup, if you chose it, happens in `scripts/secrets-sops-init.sh`
-**before** the install (it prompts, encrypts and commits; it never asks you to
-paste values anywhere else).
+   Alternatively, from a machine that already has Nix, with the installer ISO
+   booted and reachable over SSH: `nix run github:nix-community/nixos-anywhere --
+   --flake .#devbox root@<ip>` does the partitioning and install in one step.
 
 4. After the reboot, clone the repo again — the `/tmp/devbox` clone lived in the
    installer's memory and is gone. This copy is the one you keep:
 
 ```sh
 git clone <repo-url> ~/devbox
-cd ~/devbox && sudo nixos-rebuild switch --flake .#devbox   # also writes flake.lock
+cd ~/devbox && sudo nixos-rebuild switch --flake .#devbox
+sudo scripts/secrets-file-init.sh     # optional, see Secrets
 ```
-
-Commit that generated `flake.lock`: it pins all four inputs to exact revisions.
 
 ## Verify
 
@@ -135,11 +118,12 @@ sudo devbox-doctor
 
 It is a system package (`modules/dev.nix`), so it works without a clone; the
 repo copy is the same script at `scripts/doctor.sh`. PASS/FAIL for the secrets
-layer (whichever mode), the config symlink and the three servers, the binaries,
+file, the config symlink and the three servers, the agent's environment (PATH,
+nix-ld, envfs, the `devbox` registry entry), the binaries,
 the unit state, the listener, the API refusing unauthenticated calls, both forge
-tokens against their real APIs, and a live `gitea-mcp` stdio handshake. With
-`secrets = "none"` the credential checks are reported as information rather
-than failures.
+tokens against their real APIs, and a live `gitea-mcp` stdio handshake. Without a
+secrets file the credential checks are reported as information rather
+than failures. It exits non-zero on any FAIL, which is what the VM test uses.
 
 ## Day 2
 
@@ -148,9 +132,16 @@ cd ~/devbox && git pull
 sudo nixos-rebuild switch --flake ~/devbox#devbox
 ```
 
-Roll back with `sudo nixos-rebuild switch --rollback`. Change a secret in sops
-mode with `scripts/secrets-edit.sh`, then commit and rebuild — the unit restarts
-itself because the template declares `restartUnits`.
+Or push from your laptop without a clone on the box:
+`nixos-rebuild switch --flake .#devbox --target-host dev@devbox --use-remote-sudo`.
+Roll back with `sudo nixos-rebuild switch --rollback`.
+
+Before deploying a change, try it locally:
+
+```sh
+nix flake check          # boots the config in a VM and runs devbox-doctor (needs KVM)
+nixos-rebuild build-vm --flake .#devbox && ./result/bin/run-devbox-vm
+```
 
 ## Using it from a phone
 
@@ -165,55 +156,51 @@ exposing it to the internet.
 
 ## Project environments
 
-opencode merges configuration from the filesystem root down to the project:
-`opencode.json(c)` at the repo root first, then `.opencode/opencode.json(c)`, with
-the closest file winning. Anything works per project — `mcp`, `permissions`,
-`instructions`, `shell`, `worktree.directory`.
+A public repo almost never ships a Nix environment, and its env files must not
+end up in a PR. So the environment lives **next to** the clone, not in it:
 
-**The shell tool spawns `<shell> -c "<command>"` with cwd set to the project.**
-Verified in `packages/core/src/shell/select.ts` at v2.2.6: `args()` returns
-`["-c", command]` for anything that is not `cmd.exe`/PowerShell, and only
-`fish`/`nu` are rejected as incompatible — a custom path is fine.
+```
+/srv/work/<name>/
+  .envrc          use flake devbox#node    ← not in any git repo
+  src/            upstream clone, untouched
+  wt/<branch>/    git worktrees, which inherit the same env
+```
 
-So the environment is attached to the *directory*, not to a global setting.
-`shell` is set once, globally, to `agent-shell` (installed by this repo), which
-walks up from the working directory:
+```sh
+devbox-project init https://github.com/owner/repo node   # base|node|python|rust|go|upstream|none
+```
 
-| found in an ancestor | dispatch |
+`shell` is set once, globally, to `agent-shell`. opencode runs every command as
+`<shell> -c "<command>"` with cwd set to the project
+(`packages/core/src/shell/select.ts` at v2.2.6), and the wrapper picks the
+environment:
+
+| found | dispatch |
 | --- | --- |
-| `.envrc` | `direnv exec <root> bash -c <command>` — nix-direnv caches the profile, ~ms |
-| `flake.nix` only | `nix develop <root> --command bash -c <command>` — re-evaluates each call |
-| neither | plain `bash -c <command>` |
+| a `.envrc` **above** the git checkout | `direnv exec <that dir>` — the devbox layout above |
+| otherwise the nearest `.envrc` / `flake.nix` from cwd up | `direnv exec` / `nix develop` — what the repo ships itself |
+| neither | plain `bash -c` |
 
-A project therefore declares its own toolchain and the agent can neither forget
-to enter it nor leak between projects:
+The parent `.envrc` wins, so the box stays in control of what runs, and it can
+still use an upstream flake with `use flake ./src` (`devbox-project init … upstream`).
+`direnv allow` happens once per project, not per worktree.
 
-```sh
-nix flake init                       # devShells.default
-echo 'use flake' > .envrc
-direnv allow                         # required per directory
-```
+`devbox#<name>` is this repo's `devShells` (`shells.nix`), resolved through the
+system flake registry, so it is pinned to the deployed revision and needs no
+clone. The shells carry system libraries (pkg-config, openssl, zlib, libffi,
+sqlite, gcc, make); the version comes from the project's own `.nvmrc`,
+`.python-version`, `rust-toolchain.toml` through corepack, uv, mise and rustup.
+A project that needs more gets a `flake.nix` next to its `.envrc`.
 
-**Worktree startup script** is where the per-directory parts go, because a fresh
-worktree has no direnv cache and is not allowed yet:
+Beyond Nix environments, the box accepts generic Linux habits: `nix-ld` runs
+prebuilt binaries (npm native modules, wheels, rustup/mise toolchains, release
+tarballs), `envfs` resolves `#!/bin/bash` and `/usr/bin/python3`, Docker runs
+test services, and `devcontainer` covers projects built around `.devcontainer/`.
 
-```sh
-direnv allow .
-direnv exec . true     # warm the profile so the first agent command is not slow
-```
-
-Per-project tool policy, when you want it, is a file in the repo:
-
-```
-opencode.json            shell override, extra MCP servers, permissions
-.opencode/opencode.json  same, kept out of the repo root
-.opencode/agent/*.md     custom agents
-.opencode/command/*.md   custom slash commands
-AGENTS.md                project instructions: how to run tests, layout, pitfalls
-```
-
-`AGENTS.md` is the honest place for anything the shell cannot enforce — the
-wrapper guarantees the *environment*, not the commands.
+The agent is told all of this in `~/.config/opencode/AGENTS.md`
+(`modules/agents-md.nix`). A project's own `AGENTS.md` adds to it, and a
+project-level `opencode.json` / `.opencode/` can still override `shell`, add MCP
+servers or set permissions.
 
 ## Design notes and tradeoffs
 
@@ -238,12 +225,16 @@ wrapper guarantees the *environment*, not the commands.
 - **The agent has root.** `wheelNeedsPassword = false`, because opencode's shell
   tool is expected to install tooling and rebuild. The containment boundary is
   the VM, not the Unix account.
-- **Passwords are not declared unless you use sops.** With `users.mutableUsers`
-  at its default, a password set with `passwd` survives rebuilds; only sops mode
-  declares a hash, because there it is available before the account is created
-  (`neededForUsers`).
-- **`opencode.json` is a symlink into the nix store** — edit `modules/`, then
+- **No password is declared.** With `users.mutableUsers` at its default, a
+  password set with `passwd` survives rebuilds.
+- **`opencode.json` is generated** (`modules/opencode.nix`) with store paths for
+  every command, and symlinked into `~/.config/opencode` — edit the module, then
   rebuild.
+- **The agent's PATH is the system profile.** The service's `path` is
+  `/run/wrappers` + `/run/current-system/sw`, so whatever `modules/` installs is
+  what the agent sees. It also sets `DIRENV_CONFIG`, which login shells get from
+  `environment.variables` but services do not; without it nix-direnv is never
+  loaded and every command re-evaluates the project flake.
 - **GitHub wikis are not reachable over MCP** (they are git repos, not API
   objects); wiki research is the Gitea server's job.
 - **Not here yet: the sandbox MCP.** `sandbox_prefetch` (online, through the nix

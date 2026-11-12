@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# `devbox.secrets = "file"`: write the credentials env file on the box.
+# Write the credentials env file on the box (devbox.secretsFile).
 # Run as root. Nothing secret is committed anywhere.
 set -euo pipefail
 
@@ -40,15 +40,8 @@ echo
 echo "Web UI login:  username  opencode   (NOT \"$USER_NAME\" - that is the Unix account)"
 echo "               password  the one you just typed"
 echo
-# Writing the file is not enough: the unit only loads it when the option says so.
-mode=$( cd "$REPO_ROOT" && nix eval --raw .#nixosConfigurations.devbox.config.devbox.secrets 2>/dev/null || echo unknown )
-if [ "$mode" != "file" ]; then
-  echo "WARNING: devbox.secrets is currently \"$mode\", not \"file\"."
-  echo "  The opencode unit only loads this file in \"file\" mode. Set"
-  echo "  secrets = \"file\" in hosts/devbox/default.nix, commit, then:"
-  echo "      sudo nixos-rebuild switch --flake ~/devbox#devbox"
-  echo "  'systemctl restart opencode' alone will NOT pick it up."
-else
-  echo "mode is \"file\". If the service predates this file:"
-  echo "      sudo systemctl restart opencode"
+# The unit reads the file with EnvironmentFile=, so a restart is all it takes.
+if systemctl is-active --quiet opencode; then
+  systemctl restart opencode
+  echo "restarted opencode with the new credentials"
 fi

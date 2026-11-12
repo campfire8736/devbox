@@ -59,20 +59,6 @@
       '';
     };
 
-    secrets = lib.mkOption {
-      type = lib.types.enum [
-        "none"
-        "file"
-        "sops"
-      ];
-      default = "none";
-      description = ''
-        none: no credentials; opencode asks you to log in to a provider in the UI.
-        file: an env file on the box at `secretsFile`, created out of band.
-        sops: an encrypted file in the repo, decrypted with the host age key.
-      '';
-    };
-
     docker = {
       enable = lib.mkOption {
         type = lib.types.bool;
@@ -87,7 +73,12 @@
     secretsFile = lib.mkOption {
       type = lib.types.str;
       default = "/var/lib/devbox/secrets.env";
-      description = "Used by secrets = \"file\" (and as the fallback path).";
+      description = ''
+        Env file handed to the opencode service (tokens, OPENCODE_SERVER_PASSWORD).
+        Created on the box by scripts/secrets-file-init.sh, never in git. Optional:
+        when it does not exist the service still starts and opencode asks you to
+        log in to a provider in the web UI.
+      '';
     };
   };
 }

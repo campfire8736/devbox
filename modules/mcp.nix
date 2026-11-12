@@ -1,4 +1,4 @@
-{ pkgs, unstable, ... }:
+{ config, pkgs, unstable, ... }:
 {
   nixpkgs.overlays = [
     (final: prev: {
@@ -11,6 +11,9 @@
         gitea-mcp = final.callPackage ../packages/gitea-mcp.nix { };
         serena = final.callPackage ../packages/serena.nix { };
         agent-shell = final.callPackage ../packages/agent-shell.nix { };
+        devbox-project = final.callPackage ../packages/devbox-project.nix {
+          inherit (config.devbox) workspaceDir;
+        };
       };
     })
   ];
@@ -21,5 +24,6 @@
     pkgs.github-mcp-server
     pkgs.devbox.serena
     pkgs.devbox.agent-shell
+    pkgs.devbox.devbox-project
   ];
 }
