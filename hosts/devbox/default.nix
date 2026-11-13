@@ -19,6 +19,7 @@
     ../../modules/docker.nix
     ../../modules/mcp.nix
     ../../modules/opencode.nix
+    ../../modules/agents.nix
   ];
 
   devbox = {
@@ -42,6 +43,10 @@
 
     # a project's test suite needs a system Docker daemon
     docker.enable = true;
+
+    # terminal agents for SSH + tmux, next to opencode (both unfree)
+    claudeCode.enable = true;
+    antigravity.enable = true;
   };
 
   system.stateVersion = "26.05";

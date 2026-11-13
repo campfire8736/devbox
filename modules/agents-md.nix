@@ -1,7 +1,78 @@
-# Global instructions for the agent, installed as ~/.config/opencode/AGENTS.md.
+# Global instructions for the agents, one variant per tool:
+#   opencode  ~/.config/opencode/AGENTS.md
+#   claude    ~/.claude/CLAUDE.md imports /etc/devbox/agents/claude.md
+#   agy       ~/.gemini/AGENTS.md
 # Everything here is something the agent would otherwise rediscover, wrongly,
-# on every task: it is trained on Ubuntu, and this is not Ubuntu.
-{ cfg }:
+# on every task: it is trained on Ubuntu, and this is not Ubuntu. Only "Where
+# commands run" differs, because each tool runs shell commands differently.
+{ cfg, tool }:
+let
+  ws = cfg.workspaceDir;
+
+  whereCommandsRun = {
+    # opencode: every command is a fresh `agent-shell -c`, started in the tool's
+    # workdir (the session directory by default).
+    opencode = ''
+      Every shell command you run is executed inside the environment of the nearest
+      `.envrc` **above the git checkout**, so all worktrees share it. Each command is
+      a fresh process: `cd`, `export` and `nix shell` do not carry over to the next
+      one. To change the environment, edit that `.envrc` and run
+      `direnv allow ${ws}/<name>`.
+
+      Your session may be opened at the workspace root (`${ws}`), not inside a
+      project. That is how new projects get created or cloned. From there:
+
+      - **Set the shell tool's `workdir`** to the project folder
+        (`${ws}/<name>/src`, or a worktree) instead of writing
+        `cd <dir> && <command>`. The environment is chosen from where the command
+        starts. A command that *begins* with `cd <dir> &&` is recognised, but a `cd`
+        later in the command is not, and the command then runs without the project's
+        toolchain.
+      - When the project is set up, suggest that the user open a session in its
+        `src/` folder: the project's own `AGENTS.md` is only read there.
+    '';
+
+    # Claude Code: the working directory persists; a SessionStart/CwdChanged
+    # hook loads the environment of the new directory for the commands after it.
+    claude = ''
+      Your working directory persists between Bash commands. When it changes, a
+      hook loads the environment of the new directory: the nearest `.envrc`
+      **above the git checkout**, so all worktrees share it. That environment
+      applies from the **next** command on:
+
+      - `cd` into the project (`${ws}/<name>/src`, or a worktree) in a command of
+        its own, then build or test in the following commands. In
+        `cd <dir> && make test` the `make` runs before the hook, without the
+        project's toolchain.
+      - After editing the `.envrc` (and `direnv allow ${ws}/<name>`), the new
+        environment loads at the next directory change. Until then, or for one
+        command in another project without moving, use
+        `agent-shell -c '<command>'`: it loads the environment of the directory it
+        starts in, on every call.
+
+      If the session started at the workspace root (`${ws}`), the project's
+      instruction files at its root may not be loaded; suggest that the user
+      start `claude` in the project's `src/` folder once it is set up.
+    '';
+
+    # agy: no hook mechanism; its commands inherit the environment it was
+    # started in (the `agy` wrapper resolves it from the launch directory).
+    agy = ''
+      Your commands run in the environment of the directory `agy` was **started
+      from**: the nearest `.envrc` above that git checkout. Changing directory
+      during the session does not change it.
+
+      - Run project commands from that project. For another project, or after
+        editing an `.envrc` (and `direnv allow ${ws}/<name>`), wrap the command:
+        `cd ${ws}/<other>/src && agent-shell -c '<command>'`. `agent-shell`
+        loads the environment of the directory it starts in.
+      - If you were started at the workspace root (`${ws}`) to create or clone a
+        project, suggest that the user restart `agy` in the project's `src/`
+        folder once it is set up: its environment and its own `AGENTS.md` load
+        from there.
+    '';
+  }.${tool};
+in
 ''
   # This machine
 
@@ -10,10 +81,10 @@
   `nix-env -i` / `nix profile install` are the wrong answer too: the system is
   rebuilt from a git repo and anything installed that way is invisible to it.
 
-  ## Projects live in `${cfg.workspaceDir}/<name>/`
+  ## Projects live in `${ws}/<name>/`
 
   ```
-  ${cfg.workspaceDir}/<name>/
+  ${ws}/<name>/
     .envrc          the project's environment. NOT in git. Yours to edit.
     src/            the upstream clone. Never add environment files here.
     wt/<branch>/    git worktrees (`git -C src worktree add ../wt/<branch>`)
@@ -21,27 +92,9 @@
 
   Start a new one with `devbox-project init <git-url> [base|node|python|rust|go]`.
 
-  Every shell command you run is executed inside the environment of the nearest
-  `.envrc` **above the git checkout**, so all worktrees share it. Each command is
-  a fresh process: `cd`, `export` and `nix shell` do not carry over to the next
-  one. To change the environment, edit that `.envrc` and run
-  `direnv allow ${cfg.workspaceDir}/<name>`.
-
   ## Where commands run
 
-  Your session may be opened at the workspace root (`${cfg.workspaceDir}`), not
-  inside a project. That is how new projects get created or cloned. From there:
-
-  - **Set the shell tool's `workdir`** to the project folder
-    (`${cfg.workspaceDir}/<name>/src`, or a worktree) instead of writing
-    `cd <dir> && <command>`. The environment is chosen from where the command
-    starts. A command that *begins* with `cd <dir> &&` is recognised, but a `cd`
-    later in the command is not, and the command then runs without the project's
-    toolchain.
-  - **Activate the project in Serena** (below) before using its tools.
-  - When the project is set up, suggest that the user open a session in its
-    `src/` folder: the project's own `AGENTS.md` is only read there.
-
+  ${whereCommandsRun}
   ## Serena (code navigation)
 
   The `serena` MCP server answers symbol-level questions through real language
@@ -50,7 +103,7 @@
   Its index never goes stale because it asks the language server directly.
 
   - It picks its project from the session's directory: the nearest folder with
-    `.git` or `.serena/project.yml`. In a session at `${cfg.workspaceDir}` there
+    `.git` or `.serena/project.yml`. In a session at `${ws}` there
     is none, so call its `activate_project` tool with the project's `src/` path
     (or a worktree path) first.
   - It creates a `.serena/` folder in the project root (`project.yml`, memories,

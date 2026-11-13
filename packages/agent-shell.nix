@@ -27,10 +27,15 @@ writeShellApplication {
   ];
   text = ''
     cmd=""
+    resolve=""
 
     while [ $# -gt 0 ]; do
       case "$1" in
         -c) cmd="''${2-}"; shift 2 ;;
+        # `agent-shell --resolve DIR` prints "<kind>\t<root>" (kind: direnv,
+        # flake or none) and exits: the same rules, for the Claude Code hook
+        # and the agy wrapper, which cannot route commands through this shell.
+        --resolve) resolve="''${2:-$PWD}"; shift 2 || shift ;;
         *) shift ;;
       esac
     done
@@ -51,7 +56,7 @@ writeShellApplication {
     # setting the tool's workdir. Sessions opened at the workspace root then
     # start here in /srv/work, where no environment applies. Resolve the
     # environment from the cd target instead; the command runs unchanged.
-    start="$PWD"
+    start="''${resolve:-$PWD}"
     re='^[[:space:]]*cd[[:space:]]+("[^"]+"|'"'"'[^'"'"']+'"'"'|[^[:space:];&|]+)[[:space:]]*(&&|;)'
     if [[ "$cmd" =~ $re ]]; then
       target="''${BASH_REMATCH[1]}"
@@ -70,20 +75,32 @@ writeShellApplication {
       fi
     fi
 
-    prefix=()
+    kind=none
+    root=""
     top="$(git -C "$start" rev-parse --show-toplevel 2>/dev/null || true)"
 
     if [ -n "$top" ] && root="$(find_up "$(dirname "$top")" .envrc)"; then
       # nix-direnv caches the profile, so this costs milliseconds after the
       # first evaluation -- unlike `nix develop`, which re-evaluates every call.
-      prefix=(direnv exec "$root")
+      kind=direnv
     elif root="$(find_up "$start" .envrc flake.nix)"; then
       if [ -e "$root/.envrc" ]; then
-        prefix=(direnv exec "$root")
+        kind=direnv
       else
-        prefix=(nix develop "$root" --command)
+        kind=flake
       fi
     fi
+
+    if [ -n "$resolve" ]; then
+      printf '%s\t%s\n' "$kind" "$root"
+      exit 0
+    fi
+
+    prefix=()
+    case "$kind" in
+      direnv) prefix=(direnv exec "$root") ;;
+      flake) prefix=(nix develop "$root" --command) ;;
+    esac
 
     # an empty array must not be expanded under `set -u`
     if [ "''${#prefix[@]}" -eq 0 ]; then

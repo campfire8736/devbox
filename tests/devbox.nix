@@ -58,6 +58,16 @@ pkgs.testers.runNixOSTest {
       " && test \"$(agent-shell -c \"cd /srv/work/p/src && echo \\$WHO\")\" = parent'"
     )
 
+    # terminal agents: MCP servers registered, the Claude hook loads the
+    # project env, agy starts inside it
+    machine.wait_for_unit("devbox-agents-sync.service")
+    machine.succeed(
+      "su - dev -c 'hook=$(jq -r .hooks.CwdChanged[0].hooks[0].command /etc/claude-code/managed-settings.json)"
+      " && echo {\\\"new_cwd\\\":\\\"/srv/work/p/src\\\"} | CLAUDE_ENV_FILE=/tmp/claude-env $hook"
+      " && . /tmp/claude-env && test \"$WHO\" = parent'"
+    )
+    machine.succeed("su - dev -c 'cd /srv/work/p/src && agy --version && claude --version'")
+
     # serena is fetched through uv on first run; the VM has no network
     machine.succeed("DEVBOX_DOCTOR_OFFLINE=1 devbox-doctor >&2")
   '';

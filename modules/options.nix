@@ -70,6 +70,16 @@
       };
     };
 
+    claudeCode.enable = lib.mkEnableOption ''
+      Claude Code (`claude`, unfree) for SSH/tmux use, with the devbox MCP servers,
+      instructions, and a hook that loads each project's environment
+    '';
+
+    antigravity.enable = lib.mkEnableOption ''
+      the Antigravity CLI (`agy`, unfree) for SSH/tmux use, with the devbox MCP
+      servers and instructions, started in the environment of its launch directory
+    '';
+
     secretsFile = lib.mkOption {
       type = lib.types.str;
       default = "/var/lib/devbox/secrets.env";

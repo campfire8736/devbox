@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Write the credentials env file on the box (devbox.secretsFile).
-# Run as root. Nothing secret is committed anywhere.
+# Run as root. Nothing secret is committed anywhere. The file is readable by
+# the `users` group: the MCP launchers run as the operator account.
 set -euo pipefail
 
 ENVFILE="${DEVBOX_SECRETS_FILE:-/var/lib/devbox/secrets.env}"
@@ -10,7 +11,7 @@ ask() { local v; read -r -p "$1: " v; printf '%s' "$v"; }
 ask_secret() { local v; read -r -s -p "$1: " v; echo >&2; printf '%s' "$v"; }
 
 umask 077
-install -d -m 750 "$(dirname "$ENVFILE")"
+install -d -m 750 -g users "$(dirname "$ENVFILE")"
 
 : > "$ENVFILE.tmp"
 chmod 600 "$ENVFILE.tmp"
@@ -32,7 +33,8 @@ done
 printf 'OPENCODE_SERVER_PASSWORD=%s\n' "$UI" >> "$ENVFILE.tmp"
 
 mv "$ENVFILE.tmp" "$ENVFILE"
-chmod 600 "$ENVFILE"
+chgrp users "$ENVFILE"
+chmod 640 "$ENVFILE"
 
 echo
 echo "wrote $ENVFILE ($(stat -c '%a %U:%G' "$ENVFILE"))"

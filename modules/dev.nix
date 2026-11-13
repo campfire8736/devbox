@@ -8,6 +8,8 @@ let
     export DEVBOX_USER=${cfg.user}
     export DEVBOX_PORT=${toString cfg.webPort}
     export DEVBOX_SECRETS_FILE=${cfg.secretsFile}
+    export DEVBOX_CLAUDE=${if cfg.claudeCode.enable then "1" else ""}
+    export DEVBOX_AGY=${if cfg.antigravity.enable then "1" else ""}
     exec ${pkgs.bash}/bin/bash ${../scripts/doctor.sh} "$@"
   '';
 

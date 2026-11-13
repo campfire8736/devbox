@@ -64,8 +64,9 @@ way to rebuild the box from the repo alone, but it cost more than it bought:
 - it was the only reason for `LoadCredential`, which hid the file from the
   operator account — an account with passwordless sudo, so it hid nothing.
 
-The VM is the boundary. A root-only file inside it, backed up with the VM, is
-the honest amount of machinery. If rebuilding from git alone becomes a need,
+The VM is the boundary. A file inside it, readable by root and the `users`
+group (the MCP launchers run as the operator), backed up with the VM, is the
+honest amount of machinery. If rebuilding from git alone becomes a need,
 sops-nix can come back as a single path, without the fallbacks.
 
 ## The agent's shell is a wrapper, not a setting
@@ -145,6 +146,40 @@ never commit env files, the run ends with a local branch (the GitHub token is
 read-only). Everything in it is something an agent would otherwise get wrong at
 the start of every task.
 
+## Terminal agents: one server set, each tool's own mechanisms
+
+Claude Code and agy are used over SSH in tmux, next to opencode. The rule is
+that the repo defines *what* they get (three MCP servers, instructions, the
+project environment) once, and plugs it in through whatever each tool
+officially supports, never by owning a file the tool also writes:
+
+- **MCP servers:** `devbox.mcpServers` (modules/mcp.nix) is the single list.
+  opencode's config is generated from it. Claude Code keeps servers in
+  `~/.claude.json`, which also holds account state and is rewritten by the
+  tool, and agy edits its own `mcp_config.json`, so both are fed through their
+  CLIs (`claude mcp add-json --scope user`, `agy mcp add`) by a oneshot unit.
+  Rejected: Claude Code's `managed-mcp.json`, which takes *exclusive* control
+  (no server of your own, not even with `--mcp-config`), and the
+  `managedMcpServers` setting, which only takes remote servers.
+- **Tokens:** launchers read the secrets file at start-up, so no agent config
+  contains `{env:…}`/`${…}` placeholders that depend on how it was launched
+  (systemd unit vs SSH shell). This is why the file became readable by the
+  operator group.
+- **Environment, Claude Code:** `CLAUDE_CODE_SHELL_PREFIX` would wrap every
+  command in `agent-shell`, but Claude Code passes the prefix its whole
+  invocation, including its own environment setup, which runs *after* the
+  wrapper and could override the project's `PATH`. The documented route for
+  direnv-style tools is a `CwdChanged` hook writing to `CLAUDE_ENV_FILE`; it
+  lives in `/etc/claude-code/managed-settings.json` (repo-owned, merged with
+  the user's own hooks rather than replacing them).
+- **Environment, agy:** no hook, prefix or shell setting is documented, so the
+  only lever is the process environment: a wrapper resolves the launch
+  directory with `agent-shell --resolve` and starts the real binary in it.
+- **Instructions:** one generator (`modules/agents-md.nix`) with a per-tool
+  "Where commands run" section, because the three tools differ exactly there:
+  fresh process per command (opencode), persistent cwd plus hook (Claude Code),
+  environment fixed at launch (agy).
+
 ## SSH keys: out of git by default
 
 Public keys are safe to publish, but they are also *yours*: a key in a shared
@@ -182,6 +217,6 @@ read-only, empty home, no network unless asked.
   where nix derivations are enough.
 - **`nix-sandbox-mcp` / `mcp-nix` / `nix-exec`**: 0–16 stars, and the first
   mounts the project read-only, which breaks test artifacts.
-- **Running Antigravity's IDE in the VM**: the CLI works headless, but the
-  Agent Manager is local-only and the IDE needs remote-SSH. Revisit if that
-  becomes the main workflow.
+- **Running Antigravity's IDE or Agent Manager against the VM**: the Agent
+  Manager works on local folders only, and the IDE would need remote-SSH. The
+  CLI (`agy`) covers the SSH + tmux workflow instead; see below.

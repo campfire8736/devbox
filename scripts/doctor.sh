@@ -32,6 +32,16 @@ if [ -n "$ENVF" ]; then
 else
   info "no $SECRETS_FILE -> no credentials (provider login happens in the UI)"
 fi
+# The MCP launchers run as the operator (under opencode, or claude/agy in an
+# SSH shell), so the file must be readable by it, not only by root.
+if [ -e "$SECRETS_FILE" ]; then
+  if runuser -u "$USER_NAME" -- test -r "$SECRETS_FILE" 2>/dev/null; then
+    pass "$USER_NAME can read $SECRETS_FILE ($(stat -c '%a %U:%G' "$SECRETS_FILE"))"
+  else
+    fail "$USER_NAME cannot read $SECRETS_FILE: MCP servers start without tokens"
+    info "  fix: sudo systemd-tmpfiles --create   (or chgrp users + chmod 640 it)"
+  fi
+fi
 
 echo "== login =="
 shadow=$(getent shadow "$USER_NAME" 2>/dev/null | cut -d: -f2)
@@ -113,6 +123,32 @@ else
   check_bin serena --version   # first run fetches through uv, may take a minute
 fi
 
+echo "== terminal agents =="
+if [ -n "${DEVBOX_CLAUDE:-}" ]; then
+  check_bin claude --version
+  ch="/home/$USER_NAME/.claude"
+  grep -q '^@/etc/devbox/agents/claude.md' "$ch/CLAUDE.md" 2>/dev/null \
+    && pass "claude: ~/.claude/CLAUDE.md imports the devbox instructions" \
+    || fail "claude: ~/.claude/CLAUDE.md lacks the line '@/etc/devbox/agents/claude.md'"
+  [ -r /etc/claude-code/managed-settings.json ] && pass "claude: managed settings (env hook) present" || fail "claude: /etc/claude-code/managed-settings.json missing"
+  for s in gitea github serena; do
+    jq -e --arg s "$s" '.mcpServers[$s]' "/home/$USER_NAME/.claude.json" >/dev/null 2>&1 \
+      && pass "claude: MCP server $s registered" || fail "claude: MCP server $s not in ~/.claude.json"
+  done
+fi
+if [ -n "${DEVBOX_AGY:-}" ]; then
+  check_bin agy --version
+  [ -r "/home/$USER_NAME/.gemini/AGENTS.md" ] && pass "agy: ~/.gemini/AGENTS.md present" || fail "agy: ~/.gemini/AGENTS.md missing"
+  for s in gitea github serena; do
+    jq -e --arg s "$s" '.mcpServers[$s]' "/home/$USER_NAME/.gemini/config/mcp_config.json" >/dev/null 2>&1 \
+      && pass "agy: MCP server $s registered" || fail "agy: MCP server $s not in ~/.gemini/config/mcp_config.json"
+  done
+fi
+if [ -n "${DEVBOX_CLAUDE:-}${DEVBOX_AGY:-}" ]; then
+  systemctl is-active --quiet devbox-agents-sync \
+    && pass "devbox-agents-sync ran" || fail "devbox-agents-sync: $(systemctl is-active devbox-agents-sync) (journalctl -u devbox-agents-sync)"
+fi
+
 echo "== service =="
 systemctl is-active --quiet opencode && pass "opencode unit active" || fail "opencode unit: $(systemctl is-active opencode)"
 ss -ltn 2>/dev/null | grep -q ":$PORT " && pass "listening on $PORT" || fail "nothing listening on $PORT"
@@ -140,8 +176,10 @@ if [ -n "$ENVF" ] && grep -q '^OPENCODE_SERVER_PASSWORD=.' "$ENVF"; then
 
   echo "== mcp handshake =="
   req='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"doctor","version":"1"}}}'
-  out=$(printf '%s\n' "$req" | timeout 25 gitea-mcp -t stdio 2>/dev/null | head -c 400)
-  case "$out" in *'"result"'*) pass "gitea-mcp stdio handshake" ;; *) fail "gitea-mcp handshake: ${out:0:120}" ;; esac
+  # Through the launcher, as the operator: what every agent actually runs.
+  # stdin stays open briefly: gitea-mcp ends the session at EOF before replying.
+  out=$( { printf '%s\n' "$req"; sleep 3; } | timeout 25 runuser -u "$USER_NAME" -- devbox-mcp-gitea 2>/dev/null | head -c 400)
+  case "$out" in *'"result"'*) pass "gitea MCP stdio handshake (devbox-mcp-gitea)" ;; *) fail "gitea MCP handshake: ${out:0:120}" ;; esac
 else
   # Not a missing feature like an absent token: an unauthenticated /api can run
   # code as the operator, and the service listens on every interface.

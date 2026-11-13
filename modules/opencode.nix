@@ -10,44 +10,18 @@ let
     shell = lib.getExe pkgs.devbox.agent-shell;
     # The documented `mcp.servers.<name>` shape yields "No MCP servers configured"
     # on 2.2.x; the flat `mcp.<name>` record is what the binary parses.
-    mcp = {
-      gitea = {
-        type = "local";
-        command = [ (lib.getExe pkgs.devbox.gitea-mcp) "-t" "stdio" ];
-        environment = {
-          GITEA_HOST = "{env:GITEA_HOST}";
-          GITEA_ACCESS_TOKEN = "{env:GITEA_TOKEN}";
-          GITEA_SCOPES = "repository,file,branch,issue,pull_request,project,wiki,search";
-        };
-      };
-      github = {
-        type = "local";
-        command = [
-          (lib.getExe pkgs.github-mcp-server)
-          "stdio"
-          "--read-only"
-          "--toolsets"
-          "repos,issues,pull_requests"
-        ];
-        environment.GITHUB_PERSONAL_ACCESS_TOKEN = "{env:GITHUB_PERSONAL_ACCESS_TOKEN}";
-      };
-      serena = {
-        type = "local";
-        command = [
-          (lib.getExe pkgs.devbox.serena)
-          "start-mcp-server"
-          "--context"
-          "agent"
-          "--project-from-cwd"
-        ];
-      };
-    };
+    # Servers come from devbox.mcpServers (modules/mcp.nix), shared with the
+    # other agents; the launchers read their tokens themselves.
+    mcp = lib.mapAttrs (_: s: {
+      type = "local";
+      command = [ s.command ] ++ s.args;
+    }) cfg.mcpServers;
   };
 
   cfgFile = pkgs.writeText "opencode.json" (builtins.toJSON opencodeConfig);
 
   # opencode reads ~/.config/opencode/AGENTS.md as global instructions.
-  agentsFile = pkgs.writeText "AGENTS.md" (import ./agents-md.nix { inherit cfg; });
+  agentsFile = pkgs.writeText "AGENTS.md" (import ./agents-md.nix { inherit cfg; tool = "opencode"; });
 
   start = pkgs.writeShellScript "opencode-start" ''
     export OPENCODE_DISABLE_AUTOUPDATE=1

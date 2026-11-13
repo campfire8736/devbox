@@ -2,7 +2,9 @@
 
 A NixOS virtual machine, fully described by this repository, that runs
 [opencode](https://opencode.ai) as a headless server with three MCP servers
-wired into it.
+wired into it. [Claude Code](https://code.claude.com) (`claude`) and the
+[Antigravity CLI](https://antigravity.google/docs/cli/using/) (`agy`) are there
+too, for SSH + tmux, with the same servers and instructions.
 
 | MCP server | What it answers | Source |
 | --- | --- | --- |
@@ -36,7 +38,8 @@ Nothing here is secret, and nothing secret is required to boot.
 ## Secrets: one env file on the box, optional
 
 Credentials live in `/var/lib/devbox/secrets.env` (`devbox.secretsFile`),
-root-only, never in git. `sudo scripts/secrets-file-init.sh` prompts for each
+mode `0640 root:users`, never in git. It is readable by the operator because
+the MCP launchers run as that account (see Terminal agents). `sudo scripts/secrets-file-init.sh` prompts for each
 value, writes the file and restarts the service:
 
 | variable | used by |
@@ -64,11 +67,13 @@ modules/users.nix          operator account, sudo policy, authorized keys
 modules/dev.nix            toolchain, nix-ld, envfs, direnv, the `devbox` flake registry entry
 modules/docker.nix         optional Docker daemon for test suites
 modules/operator.nix       personal extras: vim, nnn, lazygit, shell aliases (delete freely)
-modules/mcp.nix            packages + overlay
+modules/mcp.nix            packages + overlay, the MCP server set shared by every agent
 modules/opencode.nix       systemd unit, generated opencode.json
-modules/agents-md.nix      the agent's global AGENTS.md
+modules/agents.nix         Claude Code and agy: MCP registration, env hook, instructions
+modules/agents-md.nix      the agents' global instructions, one variant per tool
 shells.nix                 shared project environments: base, node, python, rust, go
-packages/                  gitea-mcp, serena, agent-shell, devbox-project
+packages/                  gitea-mcp, serena, agent-shell, devbox-project, MCP
+                           launchers, Claude env hook, agy wrapper
 tests/devbox.nix           VM test: boots the host config, runs devbox-doctor
 scripts/                   secrets-file-init, doctor
 ```
@@ -190,6 +195,52 @@ history.
 
 Plain HTTP is fine on a LAN or tailnet. Put TLS in front before exposing the
 port to the internet, because the session cookie travels in clear text.
+
+## Terminal agents: Claude Code and agy
+
+Enabled in the host file (`devbox.claudeCode.enable`,
+`devbox.antigravity.enable`). Both are unfree; the flake allows exactly these
+two by name. They come from `nixpkgs-unstable`, like opencode, and do not
+self-update (the store is read-only; nixpkgs' `claude` sets
+`DISABLE_AUTOUPDATER`).
+
+```sh
+ssh dev@devbox -t tmux new -A -s main
+cd /srv/work/<name>/src
+claude        # or: agy
+```
+
+The first start asks you to log in. Over SSH both print a URL to open on your
+own machine (Claude: Claude account or `ANTHROPIC_API_KEY`; agy: Google
+account).
+
+What each one gets:
+
+| | Claude Code | agy |
+| --- | --- | --- |
+| MCP servers (gitea, github, serena) | `claude mcp add-json --scope user` | `agy mcp add` |
+| instructions | `~/.claude/CLAUDE.md` imports `/etc/devbox/agents/claude.md` | `~/.gemini/AGENTS.md` → `/etc/devbox/agents/agy.md` |
+| project environment | a `SessionStart`/`CwdChanged` hook (`/etc/claude-code/managed-settings.json`) loads it whenever the directory changes | the `agy` wrapper starts the CLI in the environment of the launch directory |
+
+- **MCP servers** are registered by `devbox-agents-sync.service`, at boot and
+  whenever a rebuild changes the server set, through each tool's own CLI. Both
+  tools also write those files themselves, so the repo does not own them:
+  servers you add are kept, and a devbox server you remove comes back on the
+  next run. Restart a running `claude`/`agy` to pick up a change.
+- **Tokens** never appear in those configs. Each server is a launcher
+  (`devbox-mcp-gitea`, `devbox-mcp-github`) that reads the secrets file when
+  it starts, so it works the same under opencode or from an SSH shell. opencode
+  uses the same launchers.
+- **`~/.claude/CLAUDE.md`** is created once with the import line and is then
+  yours (Claude Code's `/memory` edits it). If you already had one, add
+  `@/etc/devbox/agents/claude.md` to it yourself; `devbox-doctor` checks.
+- **Environment, Claude Code:** its working directory persists between
+  commands, and the hook writes the new directory's environment (same rules as
+  `agent-shell`) to `CLAUDE_ENV_FILE`, which Claude Code applies before each
+  later command. It takes effect from the command *after* a `cd`.
+- **Environment, agy:** it has no hook or shell setting, so its commands
+  inherit the environment it was started in. Start one `agy` per project, from
+  that project's folder; `agent-shell -c '…'` covers the odd command elsewhere.
 
 ## Project environments
 
