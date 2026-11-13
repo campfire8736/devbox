@@ -12,9 +12,13 @@ let
   '';
 
   # Untracked files only: a repo that tracks its own .envrc is unaffected.
+  # .serena/ is serena's per-project data (project.yml, memories, caches). Its
+  # own .serena/.gitignore only covers the cache, so without this an agent's
+  # `git add -A` would put it in an upstream PR.
   gitExcludes = pkgs.writeText "gitignore-global" ''
     .envrc
     .direnv/
+    .serena/
   '';
 in
 {

@@ -222,6 +222,19 @@ The parent `.envrc` wins, so the box stays in control of what runs, and it can
 still use an upstream flake with `use flake ./src` (`devbox-project init … upstream`).
 `direnv allow` happens once per project, not per worktree.
 
+"cwd" is the shell tool's working directory, or the target of a leading
+`cd <dir> &&` in the command. That second case covers sessions opened at
+`/srv/work` to create or clone a project: there the tool starts in the
+workspace root, and agents write `cd /srv/work/foo/src && make test` rather
+than setting the tool's `workdir`. Without that rule the command would run with
+no project environment. A `cd` later in the command is not recognised, so
+`AGENTS.md` tells the agent to use `workdir`.
+
+Serena picks its project the same way, from the session's directory. In a
+`/srv/work` session it has none until the agent calls `activate_project`.
+It keeps per-project data in `<project>/.serena/`, which the global git
+excludes file keeps out of commits.
+
 `devbox#<name>` is this repo's `devShells` (`shells.nix`), resolved through the
 system flake registry, so it is pinned to the deployed revision and needs no
 clone. The shells carry system libraries (pkg-config, openssl, zlib, libffi,

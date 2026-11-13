@@ -27,6 +27,36 @@
   one. To change the environment, edit that `.envrc` and run
   `direnv allow ${cfg.workspaceDir}/<name>`.
 
+  ## Where commands run
+
+  Your session may be opened at the workspace root (`${cfg.workspaceDir}`), not
+  inside a project. That is how new projects get created or cloned. From there:
+
+  - **Set the shell tool's `workdir`** to the project folder
+    (`${cfg.workspaceDir}/<name>/src`, or a worktree) instead of writing
+    `cd <dir> && <command>`. The environment is chosen from where the command
+    starts. A command that *begins* with `cd <dir> &&` is recognised, but a `cd`
+    later in the command is not, and the command then runs without the project's
+    toolchain.
+  - **Activate the project in Serena** (below) before using its tools.
+  - When the project is set up, suggest that the user open a session in its
+    `src/` folder: the project's own `AGENTS.md` is only read there.
+
+  ## Serena (code navigation)
+
+  The `serena` MCP server answers symbol-level questions through real language
+  servers: find a symbol, its references, its callers, a file's outline. It also
+  has symbol-aware edits. Prefer it over grep to navigate code you don't know.
+  Its index never goes stale because it asks the language server directly.
+
+  - It picks its project from the session's directory: the nearest folder with
+    `.git` or `.serena/project.yml`. In a session at `${cfg.workspaceDir}` there
+    is none, so call its `activate_project` tool with the project's `src/` path
+    (or a worktree path) first.
+  - It creates a `.serena/` folder in the project root (`project.yml`, memories,
+    caches, logs). That is expected and is serena's working data. **Never commit
+    `.serena/`**: it is excluded from git on this machine, so do not force-add it.
+
   ## Getting a toolchain
 
   1. Read the project's own declarations first: CI workflow files, `.nvmrc`,

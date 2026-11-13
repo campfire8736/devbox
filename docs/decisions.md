@@ -99,7 +99,8 @@ prefers a `.envrc` found **above the git toplevel** over anything inside the
 checkout:
 
 - nothing to commit by accident; a global `core.excludesFile` (`.envrc`,
-  `.direnv/`) covers the case where the agent creates one inside anyway — it
+  `.direnv/`, and serena's `.serena/`, whose own `.gitignore` only covers its
+  cache) covers the case where the agent creates one inside anyway — it
   only applies to untracked files, so repos that track their own are unaffected;
 - every worktree shares one environment and one `direnv allow`;
 - the box decides what runs. An upstream `.envrc` is arbitrary shell from the

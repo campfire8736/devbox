@@ -52,6 +52,11 @@ pkgs.testers.runNixOSTest {
       " && git -C src init -q && direnv allow . && direnv allow src"
       " && cd src && test \"$(agent-shell -c \"echo \\$WHO\")\" = parent'"
     )
+    # a session at the workspace root that cds into the project
+    machine.succeed(
+      "su - dev -c 'cd /srv/work"
+      " && test \"$(agent-shell -c \"cd /srv/work/p/src && echo \\$WHO\")\" = parent'"
+    )
 
     # serena is fetched through uv on first run; the VM has no network
     machine.succeed("DEVBOX_DOCTOR_OFFLINE=1 devbox-doctor >&2")
