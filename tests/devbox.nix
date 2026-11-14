@@ -47,15 +47,15 @@ pkgs.testers.runNixOSTest {
     # parent .envrc wins over one inside the clone
     machine.succeed(
       "su - dev -c '"
-      "mkdir -p /srv/work/p/src && cd /srv/work/p"
-      " && echo export WHO=parent > .envrc && echo export WHO=clone > src/.envrc"
-      " && git -C src init -q && direnv allow . && direnv allow src"
-      " && cd src && test \"$(agent-shell -c \"echo \\$WHO\")\" = parent'"
+      "mkdir -p /srv/work/p/p && cd /srv/work/p"
+      " && echo export WHO=parent > .envrc && echo export WHO=clone > p/.envrc"
+      " && git -C p init -q && direnv allow . && direnv allow p"
+      " && cd p && test \"$(agent-shell -c \"echo \\$WHO\")\" = parent'"
     )
     # a session at the workspace root that cds into the project
     machine.succeed(
       "su - dev -c 'cd /srv/work"
-      " && test \"$(agent-shell -c \"cd /srv/work/p/src && echo \\$WHO\")\" = parent'"
+      " && test \"$(agent-shell -c \"cd /srv/work/p/p && echo \\$WHO\")\" = parent'"
     )
 
     # terminal agents: MCP servers registered, the Claude hook loads the
@@ -63,10 +63,18 @@ pkgs.testers.runNixOSTest {
     machine.wait_for_unit("devbox-agents-sync.service")
     machine.succeed(
       "su - dev -c 'hook=$(jq -r .hooks.CwdChanged[0].hooks[0].command /etc/claude-code/managed-settings.json)"
-      " && echo {\\\"new_cwd\\\":\\\"/srv/work/p/src\\\"} | CLAUDE_ENV_FILE=/tmp/claude-env $hook"
+      " && echo {\\\"new_cwd\\\":\\\"/srv/work/p/p\\\"} | CLAUDE_ENV_FILE=/tmp/claude-env $hook"
       " && . /tmp/claude-env && test \"$WHO\" = parent'"
     )
-    machine.succeed("su - dev -c 'cd /srv/work/p/src && agy --version && claude --version'")
+    machine.succeed("su - dev -c 'cd /srv/work/p/p && agy --version && claude --version'")
+
+    # project creation: the helper's layout, and the skill and command both tools read
+    machine.succeed(
+      "su - dev -c 'cd /srv/work && devbox-project new q none"
+      " && test -d /srv/work/q/q/.git && test -d /srv/work/q/wt && test -f /srv/work/q/.envrc"
+      " && grep -q \"^name: devbox-project\" ~/.claude/skills/devbox-project/SKILL.md"
+      " && grep -q devbox-project ~/.config/opencode/commands/new-project.md'"
+    )
 
     # serena is fetched through uv on first run; the VM has no network
     machine.succeed("DEVBOX_DOCTOR_OFFLINE=1 devbox-doctor >&2")

@@ -23,13 +23,14 @@ let
       project. That is how new projects get created or cloned. From there:
 
       - **Set the shell tool's `workdir`** to the project folder
-        (`${ws}/<name>/src`, or a worktree) instead of writing
+        (`${ws}/<name>/<name>`, or a worktree) instead of writing
         `cd <dir> && <command>`. The environment is chosen from where the command
         starts. A command that *begins* with `cd <dir> &&` is recognised, but a `cd`
         later in the command is not, and the command then runs without the project's
         toolchain.
-      - When the project is set up, suggest that the user open a session in its
-        `src/` folder: the project's own `AGENTS.md` is only read there.
+      - When the project is set up, suggest that the user open
+        `${ws}/<name>/<name>` as a project in the web UI: the project's own
+        `AGENTS.md`, its git view and its workspaces only work there.
     '';
 
     # Claude Code: the working directory persists; a SessionStart/CwdChanged
@@ -40,7 +41,7 @@ let
       **above the git checkout**, so all worktrees share it. That environment
       applies from the **next** command on:
 
-      - `cd` into the project (`${ws}/<name>/src`, or a worktree) in a command of
+      - `cd` into the project (`${ws}/<name>/<name>`, or a worktree) in a command of
         its own, then build or test in the following commands. In
         `cd <dir> && make test` the `make` runs before the hook, without the
         project's toolchain.
@@ -52,7 +53,7 @@ let
 
       If the session started at the workspace root (`${ws}`), the project's
       instruction files at its root may not be loaded; suggest that the user
-      start `claude` in the project's `src/` folder once it is set up.
+      start `claude` in `${ws}/<name>/<name>` once it is set up.
     '';
 
     # agy: no hook mechanism; its commands inherit the environment it was
@@ -64,11 +65,11 @@ let
 
       - Run project commands from that project. For another project, or after
         editing an `.envrc` (and `direnv allow ${ws}/<name>`), wrap the command:
-        `cd ${ws}/<other>/src && agent-shell -c '<command>'`. `agent-shell`
+        `cd ${ws}/<other>/<other> && agent-shell -c '<command>'`. `agent-shell`
         loads the environment of the directory it starts in.
       - If you were started at the workspace root (`${ws}`) to create or clone a
-        project, suggest that the user restart `agy` in the project's `src/`
-        folder once it is set up: its environment and its own `AGENTS.md` load
+        project, suggest that the user restart `agy` in `${ws}/<name>/<name>`
+        once it is set up: its environment and its own `AGENTS.md` load
         from there.
     '';
   }.${tool};
@@ -86,11 +87,16 @@ in
   ```
   ${ws}/<name>/
     .envrc          the project's environment. NOT in git. Yours to edit.
-    src/            the upstream clone. Never add environment files here.
-    wt/<branch>/    git worktrees (`git -C src worktree add ../wt/<branch>`)
+    <name>/         the git checkout. Never add environment files here.
+    wt/<branch>/    git worktrees (`git -C <name> worktree add ../wt/<branch>`)
   ```
 
-  Start a new one with `devbox-project init <git-url> [base|node|python|rust|go]`.
+  Create projects only with `devbox-project`, never by hand: follow the
+  `devbox-project` skill. In short, `devbox-project init <git-url> [shell]`
+  clones, `devbox-project new <name> [shell]` starts an empty repo
+  (shell: `base`, `node`, `python`, `rust`, `go`, `upstream`, `none`).
+  Projects made before this layout have `src/` instead of `<name>/`;
+  `devbox-project migrate <name>` moves them.
 
   ## Where commands run
 
@@ -104,7 +110,7 @@ in
 
   - It picks its project from the session's directory: the nearest folder with
     `.git` or `.serena/project.yml`. In a session at `${ws}` there
-    is none, so call its `activate_project` tool with the project's `src/` path
+    is none, so call its `activate_project` tool with the checkout's path
     (or a worktree path) first.
   - It creates a `.serena/` folder in the project root (`project.yml`, memories,
     caches, logs). That is expected and is serena's working data. **Never commit
@@ -120,7 +126,7 @@ in
      `make`). Version managers are installed and work here: `mise`, `uv`,
      `rustup`, `corepack`. Use them to match the version the project asks for.
   3. A missing library or tool (what `apt install libfoo-dev` would give):
-     write a `flake.nix` next to the `.envrc` (not in `src/`), change `.envrc`
+     write a `flake.nix` next to the `.envrc` (not in the checkout), change `.envrc`
      to `use flake .`, and `direnv allow` it:
 
      ```nix
@@ -139,11 +145,11 @@ in
      Find package names with `nix search nixpkgs <name>`. A one-off command can
      use `nix shell nixpkgs#<pkg> --command ...`, but that does not set
      `PKG_CONFIG_PATH` or include paths; use the flake for build dependencies.
-  4. If the upstream repo ships its own `flake.nix`, use it: `use flake ./src`
+  4. If the upstream repo ships its own `flake.nix`, use it: `use flake ./<name>`
      in the parent `.envrc`.
   5. If the project is built around a devcontainer or Docker
      (`.devcontainer/`, `docker compose` in CONTRIBUTING), use that instead:
-     `devcontainer up --workspace-folder src`, then `devcontainer exec ...`.
+     `devcontainer up --workspace-folder <name>`, then `devcontainer exec ...`.
 
   Prebuilt Linux binaries (npm native modules, pip wheels, downloaded release
   tarballs, `#!/bin/bash` scripts) work here through `nix-ld` and `envfs`. If one
@@ -158,7 +164,7 @@ in
   ## Git
 
   - Never commit `.envrc`, `.direnv/`, or a `flake.nix`/`flake.lock` you created.
-    They live outside `src/` for that reason.
+    They live outside the checkout for that reason.
   - Work on a branch in a worktree. Commit there.
   - You cannot push to GitHub: the token is read-only. Finish with a local
     branch and a summary of what changed and how you verified it.

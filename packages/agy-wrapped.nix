@@ -3,7 +3,7 @@
 #
 # agy has no hook or shell-prefix setting, so its commands simply inherit the
 # environment agy itself runs in. Resolving it here (same rules as agent-shell)
-# gives a session started in /srv/work/foo/src the project's toolchain even
+# gives a session started in /srv/work/foo/foo the project's toolchain even
 # when the interactive shell has no direnv hook loaded.
 writeShellApplication {
   name = "agy";

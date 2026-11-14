@@ -95,7 +95,7 @@ no `flake.nix`, and whatever environment the agent adds must never reach the
 upstream PR. Putting `.envrc`/`flake.nix` inside the clone means relying on the
 agent to never `git add` them, and it collides the day upstream adds its own.
 
-So the layout is `<workspace>/<name>/{.envrc, src/, wt/}`, and `agent-shell`
+So the layout is `<workspace>/<name>/{.envrc, <name>/, wt/}`, and `agent-shell`
 prefers a `.envrc` found **above the git toplevel** over anything inside the
 checkout:
 
@@ -106,7 +106,15 @@ checkout:
 - every worktree shares one environment and one `direnv allow`;
 - the box decides what runs. An upstream `.envrc` is arbitrary shell from the
   internet; it is used only when there is no devbox one, and still needs
-  `direnv allow`. An upstream `flake.nix` is opted into with `use flake ./src`.
+  `direnv allow`. An upstream `flake.nix` is opted into with `use flake ./<name>`.
+
+The checkout is `<name>/<name>/`, not `<name>/src/`: opencode names a
+project after its checkout's folder, so `src/` made every project "src".
+
+opencode's web UI opens folders but cannot create them. Projects are created
+from a session at the workspace root, by the agent, through `devbox-project`
+and a `devbox-project` skill in `~/.claude/skills/` (read by both Claude Code
+and opencode) plus an opencode `/new-project` command that points to it.
 
 Rejected: nearest-marker-wins (the previous behaviour) — an upstream `.envrc`
 or `flake.nix` would shadow the devbox one.

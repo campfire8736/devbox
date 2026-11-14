@@ -20,6 +20,7 @@
     ../../modules/mcp.nix
     ../../modules/opencode.nix
     ../../modules/agents.nix
+    ../../modules/project-skill.nix
   ];
 
   devbox = {

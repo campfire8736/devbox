@@ -79,8 +79,8 @@ lib.mkMerge [
 
     environment.etc."devbox/agents/claude.md".source = instructions "claude";
 
+    # ~/.claude itself comes from project-skill.nix, which also uses it.
     systemd.tmpfiles.rules = [
-      "d ${home}/.claude 0700 ${user} users -"
       # Created once, then yours: Claude Code's /memory edits this file, so it
       # cannot be a read-only link. The import keeps the devbox part current.
       "f ${home}/.claude/CLAUDE.md 0644 ${user} users - @/etc/devbox/agents/claude.md"

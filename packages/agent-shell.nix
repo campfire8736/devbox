@@ -9,8 +9,8 @@
 #
 # Precedence:
 #   1. a .envrc ABOVE the git checkout (the devbox layout: <project>/.envrc next
-#      to <project>/src and <project>/wt/*). Out of git, shared by every
-#      worktree, and it can still `use flake ./src` to pick up upstream's flake.
+#      to <project>/<name> and <project>/wt/*). Out of git, shared by every
+#      worktree, and it can still `use flake ./<name>` to pick up upstream's flake.
 #   2. otherwise the nearest .envrc or flake.nix from cwd up, i.e. one the
 #      repository ships itself (an upstream .envrc still needs `direnv allow`).
 #   3. otherwise plain bash.
@@ -52,7 +52,7 @@ writeShellApplication {
       done
     }
 
-    # Agents habitually write `cd /srv/work/foo/src && make test` instead of
+    # Agents habitually write `cd /srv/work/foo/foo && make test` instead of
     # setting the tool's workdir. Sessions opened at the workspace root then
     # start here in /srv/work, where no environment applies. Resolve the
     # environment from the cd target instead; the command runs unchanged.

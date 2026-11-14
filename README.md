@@ -206,7 +206,7 @@ self-update (the store is read-only; nixpkgs' `claude` sets
 
 ```sh
 ssh dev@devbox -t tmux new -A -s main
-cd /srv/work/<name>/src
+cd /srv/work/<name>/<name>
 claude        # or: agy
 ```
 
@@ -250,20 +250,37 @@ end up in a PR. So the environment lives **next to** the clone, not in it:
 ```
 /srv/work/<name>/
   .envrc          use flake devbox#node    ← not in any git repo
-  src/            upstream clone, untouched
+  <name>/         the git checkout, untouched
   wt/<branch>/    git worktrees, which inherit the same env
 ```
 
 ```sh
-devbox-project init https://github.com/owner/repo node   # base|node|python|rust|go|upstream|none
+devbox-project init https://github.com/owner/repo node   # clone; shell: base|node|python|rust|go|upstream|none
+devbox-project new foo python                            # empty repo
+devbox-project migrate foo                               # old foo/src layout -> foo/foo
 ```
 
-**In the web UI, open `/srv/work/<name>/src` as the project**, not
+The checkout is named after the project because opencode names a project after
+its folder: with the older `src/` layout every project showed as "src".
+`migrate` moves an existing `src/`, repairs its worktrees (wherever they are)
+and updates a `use flake ./src` in the `.envrc`. Sessions opened in the old
+`src/` path keep their history but point to a folder that no longer exists.
+
+**Creating projects from the web UI.** The web UI can open folders but not
+create them, so create projects from a session opened at `/srv/work`: ask
+"clone owner/repo" or "start a new project foo", or type
+`/new-project <git-url-or-name> [shell]`. Both use the `devbox-project` skill
+(`~/.claude/skills/devbox-project/`, read by opencode and Claude Code, where
+it is also `/devbox-project`). It runs `devbox-project`, picks the environment
+from the repo's files when you don't name one, checks that it builds, and
+tells you which folder to open.
+
+**In the web UI, open `/srv/work/<name>/<name>` as the project**, not
 `/srv/work/<name>`. opencode recognises a project by its git checkout (keyed by
 the remote), and the parent folder is not one: opened there, it lands in
 opencode's catch-all "global" project, with no git view, no workspaces, and the
 repo's own `AGENTS.md` unread. The environment is unaffected either way, since
-the parent `.envrc` is found from `src/`. Sessions started at `/srv/work` are
+the parent `.envrc` is found from the checkout. Sessions started at `/srv/work` are
 still the place to create or clone projects.
 
 **Worktrees** are extra checkouts of the same repo on other branches: one per
@@ -272,7 +289,7 @@ workspace" in the web UI creates one, and the generated `opencode.json` sets
 `worktree.directory = "../wt"`, resolved from the main checkout, so it lands
 in `/srv/work/<name>/wt/<name>` and shares the project's environment. opencode
 shows it under the same project. From a shell or an agent,
-`git -C src worktree add ../wt/<branch>` does the same. A repo cloned straight
+`git -C <name> worktree add ../wt/<branch>` does the same. A repo cloned straight
 to `/srv/work/<repo>` without `devbox-project init` would put its worktrees in
 a shared `/srv/work/wt/`; use the layout.
 
@@ -288,13 +305,13 @@ environment:
 | neither | plain `bash -c` |
 
 The parent `.envrc` wins, so the box stays in control of what runs, and it can
-still use an upstream flake with `use flake ./src` (`devbox-project init … upstream`).
+still use an upstream flake with `use flake ./<name>` (`devbox-project init … upstream`).
 `direnv allow` happens once per project, not per worktree.
 
 "cwd" is the shell tool's working directory, or the target of a leading
 `cd <dir> &&` in the command. That second case covers sessions opened at
 `/srv/work` to create or clone a project: there the tool starts in the
-workspace root, and agents write `cd /srv/work/foo/src && make test` rather
+workspace root, and agents write `cd /srv/work/foo/foo && make test` rather
 than setting the tool's `workdir`. Without that rule the command would run with
 no project environment. A `cd` later in the command is not recognised, so
 `AGENTS.md` tells the agent to use `workdir`.
