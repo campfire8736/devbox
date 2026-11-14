@@ -258,6 +258,24 @@ end up in a PR. So the environment lives **next to** the clone, not in it:
 devbox-project init https://github.com/owner/repo node   # base|node|python|rust|go|upstream|none
 ```
 
+**In the web UI, open `/srv/work/<name>/src` as the project**, not
+`/srv/work/<name>`. opencode recognises a project by its git checkout (keyed by
+the remote), and the parent folder is not one: opened there, it lands in
+opencode's catch-all "global" project, with no git view, no workspaces, and the
+repo's own `AGENTS.md` unread. The environment is unaffected either way, since
+the parent `.envrc` is found from `src/`. Sessions started at `/srv/work` are
+still the place to create or clone projects.
+
+**Worktrees** are extra checkouts of the same repo on other branches: one per
+issue, so parallel sessions don't switch branches under each other. "New
+workspace" in the web UI creates one, and the generated `opencode.json` sets
+`worktree.directory = "../wt"`, resolved from the main checkout, so it lands
+in `/srv/work/<name>/wt/<name>` and shares the project's environment. opencode
+shows it under the same project. From a shell or an agent,
+`git -C src worktree add ../wt/<branch>` does the same. A repo cloned straight
+to `/srv/work/<repo>` without `devbox-project init` would put its worktrees in
+a shared `/srv/work/wt/`; use the layout.
+
 `shell` is set once, globally, to `agent-shell`. opencode runs every command as
 `<shell> -c "<command>"` with cwd set to the project
 (`packages/core/src/shell/select.ts` at v2.2.6), and the wrapper picks the

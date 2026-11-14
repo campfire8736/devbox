@@ -16,6 +16,12 @@ let
       type = "local";
       command = [ s.command ] ++ s.args;
     }) cfg.mcpServers;
+    # "New workspace" in the web UI is a git worktree. A relative directory is
+    # resolved from the project's main checkout, so `src/` puts them in the
+    # project's `wt/`, under the shared .envrc. The default
+    # (~/.local/share/opencode/worktree/) has no .envrc above it, so commands
+    # there would run without the project's toolchain.
+    worktree.directory = "../wt";
   };
 
   cfgFile = pkgs.writeText "opencode.json" (builtins.toJSON opencodeConfig);
