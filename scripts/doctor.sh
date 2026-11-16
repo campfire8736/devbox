@@ -91,7 +91,10 @@ if [ -n "$pid" ] && [ "$pid" != "0" ] && [ -r "/proc/$pid/environ" ]; then
 fi
 [ -e /lib64/ld-linux-x86-64.so.2 ] && pass "nix-ld loader present (generic binaries run)" || fail "no /lib64/ld-linux-x86-64.so.2"
 /usr/bin/env bash -c true 2>/dev/null && [ -x /bin/bash ] && pass "envfs: /bin/bash resolves" || fail "/bin/bash missing (envfs)"
-nix registry list 2>/dev/null | grep -q 'flake:devbox ' && pass "flake registry has devbox" || fail "flake registry lacks devbox"
+# Read the system registry file rather than `nix registry list`: that also
+# downloads the global registry, and fails outright (listing nothing) offline.
+reg=$(jq -r '.flakes[] | select(.from.id == "devbox") | .to.path // empty' /etc/nix/registry.json 2>/dev/null)
+[ -n "$reg" ] && [ -e "$reg" ] && pass "flake registry has devbox ($reg)" || fail "flake registry lacks devbox"
 
 echo "== binaries =="
 # Presence is not enough: a prebuilt binary on NixOS can exist and still refuse
