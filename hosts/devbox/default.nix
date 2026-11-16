@@ -1,7 +1,8 @@
 # ─────────────────────────────────────────────────────────────────────────────
 #  THE ONLY FILE YOU NEED TO EDIT
 #
-#  Everything else is generic. Fork, change these values, install.
+#  This is the example host, as the author runs it. Everything else is
+#  generic: fork, change these values, install (docs/install.md).
 #  As shipped you get a key-only box on /dev/vda. Credentials are optional: put
 #  them in /var/lib/devbox/secrets.env with scripts/secrets-file-init.sh, or
 #  skip it and log in to a model provider in the browser.

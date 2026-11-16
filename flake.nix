@@ -1,5 +1,5 @@
 {
-  description = "devbox: declarative NixOS dev machine for opencode + MCP servers";
+  description = "devbox: NixOS VM for AI coding agents (opencode, Claude Code, agy, MCP servers)";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";

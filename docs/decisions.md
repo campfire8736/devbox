@@ -3,10 +3,11 @@
 ## Why NixOS on a VM
 
 The dev environment needs a real init system, a writable `/nix`, and freedom to
-install toolchains without touching umbrelOS. The VM is also the containment
-boundary: an agent with root here cannot reach the NAS apps or the Gitea data
-directory. NixOS makes "what is installed" a single
-evaluation, so the running machine and this repo cannot drift.
+install toolchains without touching the host (umbrelOS here, any KVM host
+in general). The VM is also the containment boundary: an agent with root here
+cannot reach the host's other services or their data. NixOS makes "what is
+installed" a single evaluation, so the running machine and this repo cannot
+drift.
 
 ## Why opencode comes from nixpkgs-unstable
 
@@ -205,19 +206,44 @@ The third route (`manualSshKeys = true`) works because NixOS skips generating
 `authorized_keys.d` entirely when the declarative lists are empty, leaving
 `~/.ssh/authorized_keys` under your own control.
 
-## Sandbox: what it is for
+## Not built yet: a per-command sandbox
 
-The VM already isolates the agent from the NAS, so per-command jails buy little
-*sandboxing* value. What they buy:
+The VM already isolates the agent from the host, so per-command jails buy little
+*sandboxing* value. What they would buy:
 
-1. per-project toolchains that never pollute the system profile (nix flakes),
-2. hermetic, offline test runs,
-3. a command the agent was told to run cannot read `~/.ssh`, the tokens, or the
-   age identity.
+1. hermetic, offline test runs,
+2. a command the agent was told to run cannot read `~/.ssh` or the tokens.
 
-Shape: `sandbox_prefetch` resolves packages online through the nix daemon;
+Per-project toolchains are already covered by the project environments above.
+The planned shape: `sandbox_prefetch` resolves packages online through the nix daemon;
 `sandbox_run` executes with bwrap — project bound read-write, `/nix/store`
-read-only, empty home, no network unless asked.
+read-only, empty home, no network unless asked. It would land as a tested
+commit, not blind.
+
+## Smaller notes
+
+- **The agent has root.** `wheelNeedsPassword = false`, because the agents are
+  expected to install tooling and rebuild. The boundary is the VM, not the
+  Unix account.
+- **No password is declared.** With `users.mutableUsers` at its default, a
+  password set with `passwd` survives rebuilds.
+- **`opencode.json` is generated** (`modules/opencode.nix`) with store paths
+  for every command and symlinked into `~/.config/opencode`: edit the module,
+  then rebuild.
+- **The documented MCP config shape is wrong for the shipped binary.** The
+  docs and the published `opencode.ai/config.json` show `mcp.servers.<name>`;
+  on 2.2.x that yields *No MCP servers configured*. The flat `mcp.<name>`
+  record is what parses (tested both ways against the real binary).
+- **The agent's PATH is the system profile.** The service's `path` is
+  `/run/wrappers` + `/run/current-system/sw`, so whatever `modules/` installs
+  is what the agent sees. A hand-picked list once hid gcc, make and docker. The
+  unit also sets `DIRENV_CONFIG`, which login shells get from
+  `environment.variables` but services do not; without it nix-direnv is never
+  loaded and every command re-evaluates the project flake.
+- **`devbox-doctor` executes each binary**, not just `command -v`: a prebuilt
+  binary can be present and still refuse to start.
+- **GitHub wikis are not reachable over MCP** (they are git repos, not API
+  objects); wiki research is the Gitea server's job.
 
 ## Rejected
 
