@@ -157,7 +157,7 @@ the start of every task.
 
 ## Terminal agents: one server set, each tool's own mechanisms
 
-Claude Code and agy are used over SSH in tmux, next to opencode. The rule is
+Claude Code and the Antigravity CLI (`agy`) are used over SSH in tmux, next to opencode. The rule is
 that the repo defines *what* they get (three MCP servers, instructions, the
 project environment) once, and plugs it in through whatever each tool
 officially supports, never by owning a file the tool also writes:

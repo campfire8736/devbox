@@ -98,7 +98,7 @@ not per worktree.
 A `cd` later in the command is not recognised, so the agents' instructions
 tell them to use `workdir`.
 
-Claude Code and agy get the same environment by their own mechanisms; see
+Claude Code and the Antigravity CLI (`agy`) get the same environment by their own mechanisms; see
 [terminal-agents.md](terminal-agents.md).
 
 Serena picks its project the same way, from the session's directory. In a

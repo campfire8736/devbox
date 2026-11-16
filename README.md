@@ -9,14 +9,15 @@ is the security boundary.
 
 It runs [opencode](https://opencode.ai) as a web UI you reach from a browser
 or phone. [Claude Code](https://code.claude.com) and the
-[Antigravity CLI](https://antigravity.google/docs/cli/using/) are there for
+[Antigravity CLI](https://antigravity.google/docs/cli/using/) (`agy`) are there for
 SSH and tmux. All three get the same MCP servers and instructions.
 
 ## What you get
 
 - **opencode as a service**, with its web UI on port 4096 behind a password,
   and login by one-time pairing link.
-- **Claude Code (`claude`) and agy**, optional, set up the same way.
+- **Claude Code (`claude`) and the Antigravity CLI (`agy`)**, optional, set up
+  the same way.
 - **Three MCP servers** for every agent:
 
   | server | what it answers |
@@ -116,7 +117,7 @@ exactly these two by name; set `claudeCode.enable` and `antigravity.enable` to
 | [docs/secrets.md](docs/secrets.md) | the secrets file, and running without a Gitea server |
 | [docs/web-ui.md](docs/web-ui.md) | logging in with a pairing link, cookies, what not to use |
 | [docs/projects.md](docs/projects.md) | project layout, creation, worktrees, how commands get their environment |
-| [docs/terminal-agents.md](docs/terminal-agents.md) | Claude Code and agy over SSH |
+| [docs/terminal-agents.md](docs/terminal-agents.md) | Claude Code and the Antigravity CLI (`agy`) over SSH |
 | [docs/decisions.md](docs/decisions.md) | why things are the way they are, and what was rejected |
 
 ## Repository layout
@@ -130,7 +131,7 @@ modules/                   base system, users, toolchain, docker, MCP servers,
 modules/operator.nix       personal shell extras (vim, nnn, lazygit); delete freely
 shells.nix                 shared project environments: base, node, python, rust, go
 packages/                  agent-shell, devbox-project, MCP launchers, serena,
-                           gitea-mcp, Claude env hook, agy wrapper
+                           gitea-mcp, Claude env hook, Antigravity CLI wrapper
 tests/devbox.nix           VM test: boots the host config, runs devbox-doctor
 scripts/                   secrets-file-init, doctor
 ```

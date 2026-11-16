@@ -1,4 +1,4 @@
-# Terminal agents: Claude Code and agy
+# Terminal agents: Claude Code and the Antigravity CLI (agy)
 
 Enabled in the host file (`devbox.claudeCode.enable`,
 `devbox.antigravity.enable`); set either to `false` to leave it out. Both are unfree; the flake allows exactly these

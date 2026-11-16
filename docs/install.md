@@ -74,7 +74,7 @@ for:
   present and still refuse to start;
 - the opencode unit, its listener, and the API refusing unauthenticated calls;
 - both forge tokens against their real APIs, and a live `gitea-mcp` handshake;
-- Claude Code and agy, when enabled: MCP registration, instructions, the
+- Claude Code and the Antigravity CLI (`agy`), when enabled: MCP registration, instructions, the
   environment hook.
 
 Without a secrets file the credential checks are reported as information,
