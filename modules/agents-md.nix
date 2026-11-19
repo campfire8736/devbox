@@ -73,6 +73,49 @@ let
         from there.
     '';
   }.${tool};
+
+  # Where a server for one project goes, per tool. Always outside the checkout.
+  projectMcp = {
+    opencode = ''
+      Write it to `${ws}/<name>/opencode.json`, next to the `.envrc`. opencode
+      reads `opencode.json` from the session folder and every parent, so it
+      applies to the checkout and every worktree, on top of the global config:
+
+      ```json
+      {
+        "$schema": "https://opencode.ai/config.json",
+        "mcp": {
+          "<server>": {
+            "type": "local",
+            "command": ["npx", "-y", "<package>"],
+            "environment": { "API_TOKEN": "{file:${ws}/<name>/.secrets/<server>}" }
+          }
+        }
+      }
+      ```
+
+      Use the flat `mcp.<server>` shape shown; `mcp.servers.<server>` is not
+      read. It takes effect in a new session. Put tokens in a file under
+      `${ws}/<name>/.secrets/` (`chmod 600`) and reference it with
+      `{file:...}` as above; never add them to the devbox secrets file, which
+      only loads when opencode restarts. The global
+      `~/.config/opencode/opencode.json` is generated and read-only.
+    '';
+    claude = ''
+      Run `claude mcp add --scope local <server> -- <command> <args...>` (add
+      `-e KEY=value` for a token or other environment) from the folder the
+      user starts `claude` in. Local scope is stored in `~/.claude.json` for that folder
+      only, so each worktree needs its own. Never write a `.mcp.json`: Claude
+      Code reads it only from the project root, which is inside the checkout.
+      It takes effect when `claude` restarts.
+    '';
+    agy = ''
+      `agy mcp add [--env KEY=value] <server> -- <command> <args...>`. agy has
+      no per-project scope, so the server appears in every project; name it
+      after the project (`<name>-<server>`) and tell the user. It takes effect
+      when `agy` restarts. `--env` is where a token goes.
+    '';
+  }.${tool};
 in
 ''
   # This machine
@@ -115,6 +158,21 @@ in
   - It creates a `.serena/` folder in the project root (`project.yml`, memories,
     caches, logs). That is expected and is serena's working data. **Never commit
     `.serena/`**: it is excluded from git on this machine, so do not force-add it.
+
+  ## Adding an MCP server for one project
+
+  The servers above are for every project. When a task needs another one:
+
+  ${projectMcp}
+  - **Never** put MCP configuration inside the checkout (`opencode.json`,
+    `.opencode/`, `.mcp.json`): it would end up in an upstream PR.
+  - Do not count on a server inheriting the project's environment. One that
+    needs the project's toolchain must be wrapped:
+    `direnv exec ${ws}/<name> <command>`.
+  - `npx -y`, `uvx`, `docker run -i` and `nix run nixpkgs#<pkg>` all work as
+    the command.
+  - If every project would want the server, tell the user: it belongs in the
+    devbox repo (`devbox.mcpServers` in `modules/mcp.nix`).
 
   ## Getting a toolchain
 
